@@ -8,6 +8,7 @@
 
 package ai.mnemosyne_systems.web;
 
+import ai.mnemosyne_systems.model.Attachment;
 import ai.mnemosyne_systems.model.Company;
 import ai.mnemosyne_systems.model.Entitlement;
 import ai.mnemosyne_systems.model.CompanyEntitlement;
@@ -20,6 +21,7 @@ import io.quarkus.runtime.StartupEvent;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import jakarta.transaction.Transactional;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @ApplicationScoped
@@ -75,6 +77,17 @@ public class UserSeeder {
         seedMessageAt(a2, "Sample ticket created.", now.minusMinutes(30));
         seedMessageAt(a3, "Sample ticket created.", now.minusMinutes(80));
         seedMessageAt(a4, "Sample ticket created.", now.minusMinutes(100));
+        Message attachmentMessage = Message.find("ticket = ?1 and body = ?2", a1, "Sample ticket created.")
+                .firstResult();
+        seedAttachment(attachmentMessage, "sample.txt", "text/plain",
+                "Sample attachment\nLine two".getBytes(StandardCharsets.UTF_8));
+        seedMessageAt(a1, "Sample attachments added.", now.minusMinutes(120));
+        Message attachmentMessageTwo = Message.find("ticket = ?1 and body = ?2", a1, "Sample attachments added.")
+                .firstResult();
+        seedAttachment(attachmentMessageTwo, "sample-one.txt", "text/plain",
+                "First attachment".getBytes(StandardCharsets.UTF_8));
+        seedAttachment(attachmentMessageTwo, "sample-two.txt", "text/plain",
+                "Second attachment".getBytes(StandardCharsets.UTF_8));
         assignSupportIfMissing(a1, "support1@mnemosyne-systems.ai");
         assignSupportIfMissing(a4, "support1@mnemosyne-systems.ai");
         if (a4 != null) {
@@ -178,6 +191,22 @@ public class UserSeeder {
         message.date = date;
         message.author = ticket.requester;
         message.persist();
+    }
+
+    private void seedAttachment(Message message, String name, String mimeType, byte[] data) {
+        if (message == null) {
+            return;
+        }
+        Attachment existing = Attachment.find("message = ?1 and name = ?2", message, name).firstResult();
+        if (existing != null) {
+            return;
+        }
+        Attachment attachment = new Attachment();
+        attachment.message = message;
+        attachment.name = name;
+        attachment.mimeType = mimeType;
+        attachment.data = data;
+        attachment.persist();
     }
 
     private void assignSupportIfMissing(Ticket ticket, String email) {

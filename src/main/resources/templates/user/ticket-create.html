@@ -10,7 +10,7 @@
 {#content}
 <div class="form-card full-width">
     <h1>{#if ticketName?? && !ticketName.isBlank}{ticketName}{#else}{#if ticket.name?? && !ticket.name.isBlank}{ticket.name}{#else} {/if}{/if}</h1>
-    <form method="post" action="/user/tickets">
+    <form method="post" action="/user/tickets" enctype="multipart/form-data">
         <div>
             <label>Ticket
                 <input type="text" name="ticketName" value="{#if ticketName??}{ticketName}{/if}" readonly>
@@ -21,6 +21,26 @@
             <label>Message
                 <textarea name="message" rows="4" required>{#if message??}{message}{/if}</textarea>
             </label>
+        </div>
+        <div data-attachment-container>
+            <span class="attachment-label">Attachments</span>
+            <div class="attachment-list" data-attachment-list>
+                <table>
+                    <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Mimetype</th>
+                        <th>Size</th>
+                        <th></th>
+                    </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            <input type="file" name="attachments" multiple data-attachment-input class="attachment-input">
+            <div class="attachment-actions">
+                <button type="button" class="action-button" data-attachment-trigger>Browse</button>
+            </div>
         </div>
         {#if companyEntitlements.size == 1}
         {#for entry in companyEntitlements}

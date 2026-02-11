@@ -34,10 +34,13 @@ import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataInput;
 
 @Path("")
 @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
@@ -250,11 +253,13 @@ public class UserResource {
 
     @POST
     @Path("user/tickets")
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
     @Transactional
-    public Response createUserTicket(@CookieParam(AuthHelper.AUTH_COOKIE) String auth,
-            @FormParam("status") String status, @FormParam("message") String messageBody,
-            @FormParam("companyEntitlementId") Long companyEntitlementId) {
+    public Response createUserTicket(@CookieParam(AuthHelper.AUTH_COOKIE) String auth, MultipartFormDataInput input) {
         User user = requireUser(auth);
+        String status = AttachmentHelper.readFormValue(input, "status");
+        String messageBody = AttachmentHelper.readFormValue(input, "message");
+        Long companyEntitlementId = AttachmentHelper.readFormLong(input, "companyEntitlementId");
         if (status == null || status.isBlank()) {
             throw new BadRequestException("Status is required");
         }
@@ -288,6 +293,7 @@ public class UserResource {
         message.date = java.time.LocalDateTime.now();
         message.ticket = ticket;
         message.author = user;
+        AttachmentHelper.attachToMessage(message, AttachmentHelper.readAttachments(input, "attachments"));
         message.persist();
         return Response.seeOther(URI.create("/user/tickets")).build();
     }
@@ -330,8 +336,7 @@ public class UserResource {
         if (ticket == null) {
             throw new NotFoundException();
         }
-        java.util.List<ai.mnemosyne_systems.model.Message> messages = ai.mnemosyne_systems.model.Message
-                .list("ticket = ?1 order by date desc", ticket);
+        java.util.List<ai.mnemosyne_systems.model.Message> messages = loadMessages(ticket);
         java.util.Map<Long, String> messageLabels = new java.util.LinkedHashMap<>();
         for (ai.mnemosyne_systems.model.Message message : messages) {
             if (message.date != null) {
@@ -368,12 +373,24 @@ public class UserResource {
                 .data("currentUser", user);
     }
 
+    private List<ai.mnemosyne_systems.model.Message> loadMessages(Ticket ticket) {
+        List<ai.mnemosyne_systems.model.Message> messages = ai.mnemosyne_systems.model.Message.find(
+                "select distinct m from Message m left join fetch m.attachments where m.ticket = ?1 order by m.date desc",
+                ticket).list();
+        if (messages.isEmpty()) {
+            return messages;
+        }
+        return new ArrayList<>(new LinkedHashSet<>(messages));
+    }
+
     @POST
     @Path("user/tickets/{id}/messages")
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
     @Transactional
     public Response addUserMessage(@CookieParam(AuthHelper.AUTH_COOKIE) String auth, @PathParam("id") Long id,
-            @FormParam("body") String body) {
+            MultipartFormDataInput input) {
         User user = requireUser(auth);
+        String body = AttachmentHelper.readFormValue(input, "body");
         if (body == null || body.isBlank()) {
             throw new BadRequestException("Message is required");
         }
@@ -386,6 +403,7 @@ public class UserResource {
         message.date = java.time.LocalDateTime.now();
         message.ticket = ticket;
         message.author = user;
+        AttachmentHelper.attachToMessage(message, AttachmentHelper.readAttachments(input, "attachments"));
         message.persist();
         return Response.seeOther(URI.create("/user/tickets/" + id)).build();
     }

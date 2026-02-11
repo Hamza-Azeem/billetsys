@@ -19,7 +19,6 @@ import jakarta.transaction.Transactional;
 import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.CookieParam;
-import jakarta.ws.rs.FormParam;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.POST;
@@ -33,6 +32,10 @@ import java.net.URI;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataInput;
 
 @Path("/messages")
 @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
@@ -51,7 +54,11 @@ public class MessageResource {
     @GET
     public TemplateInstance list(@CookieParam(AuthHelper.AUTH_COOKIE) String auth) {
         User user = requireSupport(auth);
-        return listTemplate.data("messages", Message.listAll()).data("currentUser", user);
+        List<Message> messages = Message.find("select distinct m from Message m left join fetch m.attachments").list();
+        if (!messages.isEmpty()) {
+            messages = new ArrayList<>(new LinkedHashSet<>(messages));
+        }
+        return listTemplate.data("messages", messages).data("currentUser", user);
     }
 
     @GET
@@ -76,26 +83,35 @@ public class MessageResource {
     }
 
     @POST
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
     @Transactional
-    public Response create(@CookieParam(AuthHelper.AUTH_COOKIE) String auth, @FormParam("body") String body,
-            @FormParam("date") String date, @FormParam("ticketId") Long ticketId) {
+    public Response create(@CookieParam(AuthHelper.AUTH_COOKIE) String auth, MultipartFormDataInput input) {
         User user = requireSupport(auth);
+        String body = AttachmentHelper.readFormValue(input, "body");
+        String date = AttachmentHelper.readFormValue(input, "date");
+        Long ticketId = AttachmentHelper.readFormLong(input, "ticketId");
         Message message = buildMessage(null, user, body, date, ticketId);
+        AttachmentHelper.attachToMessage(message, AttachmentHelper.readAttachments(input, "attachments"));
         message.persist();
         return Response.seeOther(URI.create("/messages")).build();
     }
 
     @POST
     @Path("/{id}")
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
     @Transactional
     public Response update(@CookieParam(AuthHelper.AUTH_COOKIE) String auth, @PathParam("id") Long id,
-            @FormParam("body") String body, @FormParam("date") String date, @FormParam("ticketId") Long ticketId) {
+            MultipartFormDataInput input) {
         User user = requireSupport(auth);
+        String body = AttachmentHelper.readFormValue(input, "body");
+        String date = AttachmentHelper.readFormValue(input, "date");
+        Long ticketId = AttachmentHelper.readFormLong(input, "ticketId");
         Message message = Message.findById(id);
         if (message == null) {
             throw new NotFoundException();
         }
         buildMessage(message, user, body, date, ticketId);
+        AttachmentHelper.attachToMessage(message, AttachmentHelper.readAttachments(input, "attachments"));
         return Response.seeOther(URI.create("/messages")).build();
     }
 

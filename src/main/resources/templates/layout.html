@@ -197,6 +197,38 @@
             gap: 10px;
             margin-top: 12px;
         }
+        .attachment-list {
+            margin-top: 8px;
+        }
+        .attachment-list table {
+            margin: 0;
+        }
+        .attachment-list td:last-child {
+            text-align: right;
+        }
+        .attachment-input {
+            position: absolute;
+            left: -9999px;
+        }
+        .attachment-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 8px;
+            justify-content: flex-end;
+        }
+        .attachment-label {
+            font-weight: 600;
+            display: block;
+            margin-bottom: 6px;
+        }
+        .attachment-remove {
+            border: none;
+            background: transparent;
+            color: #b00020;
+            cursor: pointer;
+            font-weight: 600;
+        }
         .action-button {
             display: inline-block;
             padding: 8px 12px;
@@ -278,7 +310,9 @@
         </a>
         <nav class="header-nav">
             {#if currentUser != null && (currentUser.type == 'tam' || currentUser.type == 'user')}
-            <a href="/user/tickets">Tickets</a>
+            <a href="/user/tickets">
+                Tickets ({#if assignedCount??}{assignedCount}{#else}0{/if}/{#if openCount??}{openCount}{#else}0{/if})
+            </a>
             {#else}
             <a href="/">Home</a>
             <a href="/companies">Companies</a>
@@ -419,9 +453,121 @@
         }, 1000);
     }
 
+    function formatAttachmentSize(bytes) {
+        if (bytes === 1) {
+            return '1 byte';
+        }
+        if (!bytes) {
+            return '0 bytes';
+        }
+        if (bytes < 1024) {
+            return bytes + ' bytes';
+        }
+        const kb = bytes / 1024;
+        if (kb < 1024) {
+            return kb.toFixed(1).replace(/\.0$/, '') + ' KB';
+        }
+        const mb = kb / 1024;
+        return mb.toFixed(1).replace(/\.0$/, '') + ' MB';
+    }
+
+    function syncAttachmentInput(input, files) {
+        const dataTransfer = new DataTransfer();
+        files.forEach(file => dataTransfer.items.add(file));
+        input.files = dataTransfer.files;
+        input._attachmentFiles = files;
+    }
+
+    function renderAttachmentList(input) {
+        const container = input.closest('[data-attachment-container]');
+        if (!container) {
+            return;
+        }
+        const list = container.querySelector('[data-attachment-list]');
+        if (!list) {
+            return;
+        }
+        const body = list.querySelector('tbody');
+        if (!body) {
+            return;
+        }
+        const files = input._attachmentFiles || Array.from(input.files || []);
+        body.innerHTML = '';
+        list.hidden = false;
+        if (!files.length) {
+            return;
+        }
+        files.forEach((file, index) => {
+            const row = document.createElement('tr');
+            row.innerHTML =
+                '<td>' + file.name + '</td>' +
+                '<td>' + (file.type || 'application/octet-stream') + '</td>' +
+                '<td>' + formatAttachmentSize(file.size) + '</td>' +
+                '<td><button type="button" class="attachment-remove" data-attachment-index="' + index + '">Remove</button></td>';
+            body.appendChild(row);
+        });
+    }
+
+    function handleAttachmentChange(event) {
+        const input = event.target;
+        const existing = input._attachmentFiles || [];
+        const incoming = Array.from(input.files || []);
+        if (!incoming.length) {
+            syncAttachmentInput(input, existing);
+            renderAttachmentList(input);
+            return;
+        }
+        const combined = existing.concat(incoming.filter(file => !existing.some(existingFile =>
+            existingFile.name === file.name &&
+            existingFile.size === file.size &&
+            existingFile.lastModified === file.lastModified)));
+        syncAttachmentInput(input, combined);
+        renderAttachmentList(input);
+    }
+
+    function handleAttachmentRemove(event) {
+        const button = event.target.closest('[data-attachment-index]');
+        if (!button) {
+            return;
+        }
+        const container = button.closest('[data-attachment-container]');
+        if (!container) {
+            return;
+        }
+        const input = container.querySelector('[data-attachment-input]');
+        if (!input) {
+            return;
+        }
+        const index = Number(button.getAttribute('data-attachment-index'));
+        const files = (input._attachmentFiles || []).slice();
+        if (Number.isNaN(index) || index < 0 || index >= files.length) {
+            return;
+        }
+        files.splice(index, 1);
+        syncAttachmentInput(input, files);
+        renderAttachmentList(input);
+    }
+
+    function setupAttachmentInputs() {
+        const inputs = document.querySelectorAll('[data-attachment-input]');
+        inputs.forEach(input => {
+            input.addEventListener('change', handleAttachmentChange);
+            renderAttachmentList(input);
+            const container = input.closest('[data-attachment-container]');
+            if (container) {
+                const trigger = container.querySelector('[data-attachment-trigger]');
+                if (trigger) {
+                    trigger.addEventListener('click', () => input.click());
+                }
+            }
+        });
+        document.addEventListener('click', handleAttachmentRemove);
+    }
+
     updateHeaderClock();
     setInterval(updateHeaderClock, 1000);
     setupSessionTimeout();
+    setupAttachmentInputs();
     </script>
 </body>
 </html>

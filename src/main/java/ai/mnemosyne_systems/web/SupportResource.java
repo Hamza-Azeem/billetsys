@@ -39,12 +39,15 @@ import java.net.URI;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.HashSet;
+import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataInput;
 
 @Path("/support")
 @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
@@ -269,7 +272,7 @@ public class SupportResource {
                 }
             }
         }
-        java.util.List<Message> messages = Message.list("ticket = ?1 order by date desc", ticket);
+        java.util.List<Message> messages = loadMessages(ticket);
         java.util.Map<Long, String> messageLabels = new java.util.LinkedHashMap<>();
         for (Message message : messages) {
             if (message.date != null) {
@@ -290,12 +293,24 @@ public class SupportResource {
                 .data("ticketsBase", "/support").data("showSupportUsers", true).data("currentUser", user);
     }
 
+    private List<Message> loadMessages(Ticket ticket) {
+        List<Message> messages = Message.find(
+                "select distinct m from Message m left join fetch m.attachments where m.ticket = ?1 order by m.date desc",
+                ticket).list();
+        if (messages.isEmpty()) {
+            return messages;
+        }
+        return new ArrayList<>(new LinkedHashSet<>(messages));
+    }
+
     @POST
     @Path("/tickets/{id}/messages")
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
     @Transactional
     public Response addMessage(@CookieParam(AuthHelper.AUTH_COOKIE) String auth, @jakarta.ws.rs.PathParam("id") Long id,
-            @FormParam("body") String body) {
+            MultipartFormDataInput input) {
         User user = requireSupport(auth);
+        String body = AttachmentHelper.readFormValue(input, "body");
         if (body == null || body.isBlank()) {
             throw new BadRequestException("Message is required");
         }
@@ -308,17 +323,21 @@ public class SupportResource {
         message.date = LocalDateTime.now();
         message.ticket = ticket;
         message.author = user;
+        AttachmentHelper.attachToMessage(message, AttachmentHelper.readAttachments(input, "attachments"));
         message.persist();
         return Response.seeOther(URI.create("/support/tickets/" + id)).build();
     }
 
     @POST
     @Path("/tickets")
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
     @Transactional
-    public Response createTicket(@CookieParam(AuthHelper.AUTH_COOKIE) String auth, @FormParam("status") String status,
-            @FormParam("message") String messageBody, @FormParam("companyId") Long companyId,
-            @FormParam("companyEntitlementId") Long companyEntitlementId) {
+    public Response createTicket(@CookieParam(AuthHelper.AUTH_COOKIE) String auth, MultipartFormDataInput input) {
         User user = requireSupport(auth);
+        String status = AttachmentHelper.readFormValue(input, "status");
+        String messageBody = AttachmentHelper.readFormValue(input, "message");
+        Long companyId = AttachmentHelper.readFormLong(input, "companyId");
+        Long companyEntitlementId = AttachmentHelper.readFormLong(input, "companyEntitlementId");
         if (status == null || status.isBlank()) {
             throw new BadRequestException("Status is required");
         }
@@ -356,6 +375,7 @@ public class SupportResource {
         message.date = LocalDateTime.now();
         message.ticket = ticket;
         message.author = user;
+        AttachmentHelper.attachToMessage(message, AttachmentHelper.readAttachments(input, "attachments"));
         message.persist();
         return Response.seeOther(URI.create("/support")).build();
     }

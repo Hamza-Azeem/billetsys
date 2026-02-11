@@ -8,6 +8,7 @@
 
 package ai.mnemosyne_systems.web;
 
+import ai.mnemosyne_systems.model.Attachment;
 import ai.mnemosyne_systems.model.Company;
 import ai.mnemosyne_systems.model.CompanyEntitlement;
 import ai.mnemosyne_systems.model.Entitlement;
@@ -21,6 +22,8 @@ import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
 import jakarta.transaction.Transactional;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -293,16 +296,53 @@ class UserAccessTest {
         Ticket updatedTicket = refreshedTicket(ticket.id);
         Assertions.assertEquals("In Progress", updatedTicket.status);
 
+        byte[] attachmentData = "Attachment line one\nAttachment line two".getBytes(StandardCharsets.UTF_8);
+        byte[] attachmentDataTwo = "Second attachment".getBytes(StandardCharsets.UTF_8);
         RestAssured.given().redirects().follow(false).cookie(AuthHelper.AUTH_COOKIE, cookie)
-                .contentType(ContentType.URLENC).formParam("body", "Support note").formParam("date", "2024-01-01T10:00")
-                .formParam("ticketId", ticket.id).post("/messages").then().statusCode(303);
+                .multiPart("body", "Support note").multiPart("date", "2024-01-01T10:00")
+                .multiPart("ticketId", String.valueOf(ticket.id))
+                .multiPart("attachments", "note.txt", attachmentData, "text/plain")
+                .multiPart("attachments", "note-2.txt", attachmentDataTwo, "text/plain").post("/messages").then()
+                .statusCode(303);
         Message message = Message.find("ticket = ?1 and body = ?2", ticket, "Support note").firstResult();
         Assertions.assertNotNull(message);
+        List<Attachment> attachments = Attachment.list("message = ?1 order by id", message);
+        Assertions.assertEquals(2, attachments.size());
+        Attachment attachment = attachments.get(0);
+        Assertions.assertEquals("note.txt", attachment.name);
+        Assertions.assertEquals("text/plain", attachment.mimeType);
+        Assertions.assertEquals(attachmentData.length, attachment.data.length);
+        Attachment secondAttachment = attachments.get(1);
+        Assertions.assertEquals("note-2.txt", secondAttachment.name);
+        Assertions.assertEquals(attachmentDataTwo.length, secondAttachment.data.length);
+
+        RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/support/tickets/" + ticket.id).then()
+                .statusCode(200).body(Matchers.containsString("note.txt")).body(Matchers.containsString("note-2.txt"))
+                .body(Matchers.containsString("text/plain")).body(Matchers.containsString("bytes"));
+
+        RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/attachments/" + attachment.id).then()
+                .statusCode(200).body(Matchers.containsString("note.txt"))
+                .body(Matchers.containsString("Attachment line two"));
+
+        byte[] replyData = "Reply attachment".getBytes(StandardCharsets.UTF_8);
+        byte[] replyDataTwo = "Second reply attachment".getBytes(StandardCharsets.UTF_8);
+        RestAssured.given().redirects().follow(false).cookie(AuthHelper.AUTH_COOKIE, cookie)
+                .multiPart("body", "Reply with attachments")
+                .multiPart("attachments", "reply.txt", replyData, "text/plain")
+                .multiPart("attachments", "reply-2.txt", replyDataTwo, "text/plain")
+                .post("/support/tickets/" + ticket.id + "/messages").then().statusCode(303);
+        Message replyMessage = Message.find("ticket = ?1 and body = ?2", ticket, "Reply with attachments")
+                .firstResult();
+        Assertions.assertNotNull(replyMessage);
+        List<Attachment> replyAttachments = Attachment.list("message = ?1 order by id", replyMessage);
+        Assertions.assertEquals(2, replyAttachments.size());
+        Assertions.assertEquals("reply.txt", replyAttachments.get(0).name);
+        Assertions.assertEquals("reply-2.txt", replyAttachments.get(1).name);
 
         RestAssured.given().redirects().follow(false).cookie(AuthHelper.AUTH_COOKIE, cookie)
-                .contentType(ContentType.URLENC).formParam("body", "Support note updated")
-                .formParam("date", "2024-01-01T11:00").formParam("ticketId", ticket.id).post("/messages/" + message.id)
-                .then().statusCode(303);
+                .multiPart("body", "Support note updated").multiPart("date", "2024-01-01T11:00")
+                .multiPart("ticketId", String.valueOf(ticket.id)).post("/messages/" + message.id).then()
+                .statusCode(303);
         Message updatedMessage = refreshedMessage(message.id);
         Assertions.assertEquals("Support note updated", updatedMessage.body);
 
@@ -313,6 +353,33 @@ class UserAccessTest {
         RestAssured.given().redirects().follow(false).cookie(AuthHelper.AUTH_COOKIE, cookie)
                 .post("/tickets/" + ticket.id + "/delete").then().statusCode(303);
         Assertions.assertNull(refreshedTicket(ticket.id));
+    }
+
+    @Test
+    void attachmentsPageUsesRoleHeader() {
+        ensureUser("support1", "support1@mnemosyne-systems.ai", User.TYPE_SUPPORT, "support1");
+        ensureUser("tam", "tam@mnemosyne-systems.ai", User.TYPE_TAM, "tam");
+        ensureUser("user", "user@mnemosyne-systems.ai", User.TYPE_USER, "user");
+        Long companyId = ensureCompany("Attachment Role Co");
+        ensureCompanyUsers(companyId, "tam@mnemosyne-systems.ai");
+        Ticket ticket = ensureTicket(companyId);
+        Message message = ensureMessageWithBody(ticket, "Attachment role message");
+        Attachment attachment = ensureAttachment(message, "role-attachment.txt");
+
+        String supportCookie = login("support1", "support1");
+        User supportUser = User.find("email", "support1@mnemosyne-systems.ai").firstResult();
+        SupportResource.SupportTicketCounts counts = SupportResource.loadTicketCounts(supportUser);
+        RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, supportCookie).get("/attachments/" + attachment.id).then()
+                .statusCode(200).body(Matchers.matchesPattern(
+                        "(?s).*Tickets\\s*\\(" + counts.assignedCount + "/" + counts.openCount + "\\).*"));
+
+        String tamCookie = login("tam", "tam");
+        RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, tamCookie).get("/attachments/" + attachment.id).then()
+                .statusCode(200).body(Matchers.matchesPattern("(?s).*Tickets\\s*\\(\\d+/\\d+\\).*"));
+
+        String userCookie = login("user", "user");
+        RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, userCookie).get("/attachments/" + attachment.id).then()
+                .statusCode(200).body(Matchers.matchesPattern("(?s).*Tickets\\s*\\(\\d+/\\d+\\).*"));
     }
 
     @Test
@@ -433,6 +500,36 @@ class UserAccessTest {
         message.date = java.time.LocalDateTime.now();
         message.author = ai.mnemosyne_systems.model.User.find("email", "support1@mnemosyne-systems.ai").firstResult();
         message.persist();
+    }
+
+    @Transactional
+    Message ensureMessageWithBody(Ticket ticket, String body) {
+        Message message = Message.find("ticket = ?1 and body = ?2", ticket, body).firstResult();
+        if (message != null) {
+            return message;
+        }
+        message = new Message();
+        message.ticket = ticket;
+        message.body = body;
+        message.date = java.time.LocalDateTime.now();
+        message.author = User.find("email", "support1@mnemosyne-systems.ai").firstResult();
+        message.persist();
+        return message;
+    }
+
+    @Transactional
+    Attachment ensureAttachment(Message message, String name) {
+        Attachment attachment = Attachment.find("message = ?1 and name = ?2", message, name).firstResult();
+        if (attachment != null) {
+            return attachment;
+        }
+        attachment = new Attachment();
+        attachment.message = message;
+        attachment.name = name;
+        attachment.mimeType = "text/plain";
+        attachment.data = "Attachment data".getBytes(StandardCharsets.UTF_8);
+        attachment.persist();
+        return attachment;
     }
 
     @Transactional

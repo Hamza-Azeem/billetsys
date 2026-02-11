@@ -9,7 +9,7 @@
 {#include layout}
 {#content}
 <h1>{title}</h1>
-<form method="post" action="{action}">
+<form method="post" action="{action}" enctype="multipart/form-data">
     <div>
         <label>Body
             <textarea name="body" rows="4" cols="50" required>{message.body}</textarea>
@@ -29,6 +29,26 @@
                 {/for}
             </select>
         </label>
+    </div>
+    <div data-attachment-container>
+        <span class="attachment-label">Attachments</span>
+        <div class="attachment-list" data-attachment-list>
+            <table>
+                <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Mimetype</th>
+                    <th>Size</th>
+                    <th></th>
+                </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <input type="file" name="attachments" multiple data-attachment-input class="attachment-input">
+        <div class="attachment-actions">
+            <button type="button" class="action-button" data-attachment-trigger>Browse</button>
+        </div>
     </div>
     <button type="submit">Save</button>
 </form>
