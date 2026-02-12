@@ -8,10 +8,8 @@
 
 package ai.mnemosyne_systems.web;
 
-import ai.mnemosyne_systems.model.Company;
-import ai.mnemosyne_systems.model.Country;
-import ai.mnemosyne_systems.model.Timezone;
-import ai.mnemosyne_systems.model.User;
+import ai.mnemosyne_systems.model.*;
+import io.quarkus.elytron.security.common.BcryptUtil;
 import io.quarkus.qute.Location;
 import io.quarkus.qute.Template;
 import io.quarkus.qute.TemplateInstance;
@@ -31,6 +29,7 @@ import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.List;
 
 @Path("/companies")
@@ -39,11 +38,14 @@ import java.util.List;
 @Blocking
 public class CompanyResource {
 
-    @Location("companies/list.html")
+    @Location("companies/companies.html")
     Template listTemplate;
 
-    @Location("companies/form.html")
+    @Location("companies/company-form.html")
     Template formTemplate;
+
+    @Location("companies/company-view.html")
+    Template companyViewTemplate;
 
     @GET
     public TemplateInstance list(@CookieParam(AuthHelper.AUTH_COOKIE) String auth) {
@@ -52,15 +54,19 @@ public class CompanyResource {
     }
 
     @GET
-    @Path("/new")
+    @Path("/create")
     public TemplateInstance createForm(@CookieParam(AuthHelper.AUTH_COOKIE) String auth) {
         User user = requireAdmin(auth);
         Company company = new Company();
+        User primaryContact = new User();
         List<Country> countries = Country.list("order by name");
-        return formTemplate.data("company", company)
-                .data("users", User.list("type in ?1", List.of(User.TYPE_USER, User.TYPE_TAM)))
-                .data("countries", countries).data("timezones", List.of()).data("action", "/companies")
-                .data("title", "New company").data("currentUser", user);
+        return formTemplate.data("company", company).data("users", User.list("type", User.TYPE_USER))
+                .data("tams", User.list("type", User.TYPE_TAM)).data("entitlements", Entitlement.listAll())
+                .data("supportLevels", SupportLevel.listAll()).data("companyEntitlements", java.util.List.of())
+                .data("selectedEntitlementLevels", java.util.Map.of()).data("selectedUserIds", java.util.List.of())
+                .data("selectedTamIds", java.util.List.of()).data("countries", countries)
+                .data("timezones", java.util.List.of()).data("action", "/companies").data("title", "New company")
+                .data("currentUser", user).data("primaryContact", primaryContact);
     }
 
     @GET
@@ -71,13 +77,38 @@ public class CompanyResource {
         if (company == null) {
             throw new NotFoundException();
         }
-        List<Country> countries = Country.list("order by name");
-        List<Timezone> timezones = company.country != null
-                ? Timezone.list("country = ?1 order by name", company.country) : List.of();
-        return formTemplate.data("company", company)
-                .data("users", User.list("type in ?1", List.of(User.TYPE_USER, User.TYPE_TAM)))
-                .data("countries", countries).data("timezones", timezones).data("action", "/companies/" + id)
-                .data("title", "Edit Company").data("currentUser", user);
+        User primaryContact = company.primaryContact;
+        if (primaryContact == null) {
+            throw new NotFoundException();
+        }
+        java.util.List<User> companyUsers = Company.find("select u from Company c join c.users u where c.id = ?1", id)
+                .list();
+        java.util.List<CompanyEntitlement> companyEntitlements = CompanyEntitlement.find(
+                "select distinct ce from CompanyEntitlement ce join fetch ce.entitlement join fetch ce.supportLevel where ce.company.id = ?1",
+                id).list();
+        java.util.List<Long> selectedUserIds = companyUsers.stream()
+                .filter(selected -> User.TYPE_USER.equalsIgnoreCase(selected.type)).map(selected -> selected.id)
+                .toList();
+        java.util.List<Long> selectedTamIds = companyUsers.stream()
+                .filter(selected -> User.TYPE_TAM.equalsIgnoreCase(selected.type)).map(selected -> selected.id)
+                .toList();
+        java.util.Map<Long, Long> selectedEntitlementLevels = new java.util.HashMap<>();
+        for (CompanyEntitlement entry : companyEntitlements) {
+            if (entry.entitlement != null && entry.supportLevel != null) {
+                selectedEntitlementLevels.put(entry.entitlement.id, entry.supportLevel.id);
+            }
+        }
+        java.util.List<Country> countries = Country.list("order by name");
+        java.util.List<Timezone> timezones = company.country != null
+                ? Timezone.list("country = ?1 order by name", company.country) : java.util.List.of();
+
+        return formTemplate.data("company", company).data("users", User.list("type", User.TYPE_USER))
+                .data("tams", User.list("type", User.TYPE_TAM)).data("entitlements", Entitlement.listAll())
+                .data("supportLevels", SupportLevel.listAll()).data("companyEntitlements", companyEntitlements)
+                .data("selectedEntitlementLevels", selectedEntitlementLevels).data("selectedUserIds", selectedUserIds)
+                .data("selectedTamIds", selectedTamIds).data("countries", countries).data("timezones", timezones)
+                .data("action", "/companies/" + id).data("title", "Edit Company").data("currentUser", user)
+                .data("primaryContact", primaryContact);
     }
 
     @POST
@@ -86,12 +117,33 @@ public class CompanyResource {
             @FormParam("address1") String address1, @FormParam("address2") String address2,
             @FormParam("city") String city, @FormParam("state") String state, @FormParam("zip") String zip,
             @FormParam("countryId") Long countryId, @FormParam("timezoneId") Long timezoneId,
-            @FormParam("userIds") List<Long> userIds) {
+            @FormParam("userIds") java.util.List<Long> userIds, @FormParam("tamIds") java.util.List<Long> tamIds,
+            @FormParam("entitlementIds") java.util.List<Long> entitlementIds,
+            @FormParam("supportLevelIds") java.util.List<Long> supportLevelIds,
+            @FormParam("phoneNumber") String phoneNumber,
+            @FormParam("primaryContactUsername") String primaryContactUsername,
+            @FormParam("primaryContactPhoneNumber") String primaryContactPhoneNumber,
+            @FormParam("primaryPhoneNumberExtension") String primaryPhoneNumberExtension,
+            @FormParam("primaryContactEmail") String primaryContactEmail,
+            @FormParam("primaryContactPassword") String primaryContactPassword) {
         requireAdmin(auth);
         if (name == null || name.isBlank()) {
             throw new BadRequestException("Name is required");
         }
         Company company = new Company();
+        validatePrimaryContactUser(primaryContactUsername, primaryContactEmail, primaryContactPassword);
+        User primaryContact = new User();
+        primaryContact.name = primaryContactUsername;
+        primaryContact.email = primaryContactEmail;
+        primaryContact.phoneNumber = primaryContactPhoneNumber != null && !primaryContactPhoneNumber.isBlank()
+                ? primaryContactPhoneNumber : null;
+        primaryContact.phoneExtension = primaryPhoneNumberExtension != null && !primaryPhoneNumberExtension.isBlank()
+                ? primaryPhoneNumberExtension : null;
+        primaryContact.passwordHash = BcryptUtil.bcryptHash(primaryContactPassword);
+        primaryContact.type = User.TYPE_USER;
+        primaryContact.persist();
+        List<Long> userIdsModified = new ArrayList<>(userIds);
+        userIdsModified.add(primaryContact.id);
         company.name = name;
         company.address1 = address1;
         company.address2 = address2;
@@ -100,8 +152,11 @@ public class CompanyResource {
         company.zip = zip;
         company.country = countryId != null ? Country.findById(countryId) : null;
         company.timezone = timezoneId != null ? Timezone.findById(timezoneId) : null;
-        company.users = resolveUsers(userIds);
+        company.users = resolveUsers(userIdsModified, tamIds);
+        company.phoneNumber = phoneNumber;
+        company.primaryContact = primaryContact;
         company.persist();
+        applyEntitlements(company, entitlementIds, supportLevelIds, java.util.List.of());
         return Response.seeOther(URI.create("/companies")).build();
     }
 
@@ -112,7 +167,11 @@ public class CompanyResource {
             @FormParam("name") String name, @FormParam("address1") String address1,
             @FormParam("address2") String address2, @FormParam("city") String city, @FormParam("state") String state,
             @FormParam("zip") String zip, @FormParam("countryId") Long countryId,
-            @FormParam("timezoneId") Long timezoneId, @FormParam("userIds") List<Long> userIds) {
+            @FormParam("timezoneId") Long timezoneId, @FormParam("userIds") java.util.List<Long> userIds,
+            @FormParam("tamIds") java.util.List<Long> tamIds,
+            @FormParam("entitlementIds") java.util.List<Long> entitlementIds,
+            @FormParam("supportLevelIds") java.util.List<Long> supportLevelIds,
+            @FormParam("phoneNumber") String phoneNumber, @FormParam("primaryContact") Long primaryContactId) {
         requireAdmin(auth);
         Company company = Company.findById(id);
         if (company == null) {
@@ -121,6 +180,23 @@ public class CompanyResource {
         if (name == null || name.isBlank()) {
             throw new BadRequestException("Name is required");
         }
+        if (company.primaryContact == null) {
+            throw new NotFoundException();
+        }
+        List<Long> userIdsModified = new ArrayList<>(userIds);
+        if (primaryContactId == null) {
+            throw new BadRequestException("Primary contact id is required");
+        } else {
+            if (!primaryContactId.equals(company.primaryContact.id)) {
+                User updatedPrimaryContact = User.findById(primaryContactId);
+                if (updatedPrimaryContact == null) {
+                    throw new NotFoundException();
+                }
+                company.primaryContact = updatedPrimaryContact;
+                userIdsModified.add(primaryContactId);
+            }
+        }
+
         company.name = name;
         company.address1 = address1;
         company.address2 = address2;
@@ -129,9 +205,50 @@ public class CompanyResource {
         company.zip = zip;
         company.country = countryId != null ? Country.findById(countryId) : null;
         company.timezone = timezoneId != null ? Timezone.findById(timezoneId) : null;
+        company.phoneNumber = phoneNumber;
         company.users.clear();
-        company.users.addAll(resolveUsers(userIds));
+        company.users.addAll(resolveUsers(userIdsModified, tamIds));
+        java.util.List<CompanyEntitlement> existingEntitlements = CompanyEntitlement.find("company = ?1", company)
+                .list();
+        java.util.Set<Long> selectedEntitlementIds = applyEntitlements(company, entitlementIds, supportLevelIds,
+                existingEntitlements);
+        for (CompanyEntitlement entry : existingEntitlements) {
+            if (entry.entitlement == null) {
+                continue;
+            }
+            if (selectedEntitlementIds.contains(entry.entitlement.id)) {
+                continue;
+            }
+            if (Ticket.count("companyEntitlement", entry) > 0) {
+                continue;
+            }
+            entry.delete();
+        }
         return Response.seeOther(URI.create("/companies")).build();
+    }
+
+    @GET
+    @Path("{id}")
+    public TemplateInstance view(@CookieParam(AuthHelper.AUTH_COOKIE) String auth, @PathParam("id") Long id) {
+        User user = requireAdmin(auth);
+        Company company = Company.find("select distinct c from Company c left join fetch c.users where c.id = ?1", id)
+                .firstResult();
+        if (company == null) {
+            throw new NotFoundException();
+        }
+        java.util.List<User> users = Company
+                .find("select u from Company c join c.users u where c = ?1 and u.type = ?2 order by u.name", company,
+                        User.TYPE_USER)
+                .list();
+        java.util.List<User> tamUsers = Company
+                .find("select u from Company c join c.users u where c = ?1 and u.type = ?2 order by u.name", company,
+                        User.TYPE_TAM)
+                .list();
+        java.util.List<CompanyEntitlement> companyEntitlements = CompanyEntitlement.find(
+                "select distinct ce from CompanyEntitlement ce join fetch ce.entitlement join fetch ce.supportLevel where ce.company = ?1",
+                company).list();
+        return companyViewTemplate.data("company", company).data("companyUsers", users).data("companyTams", tamUsers)
+                .data("companyEntitlements", companyEntitlements).data("currentUser", user);
     }
 
     @POST
@@ -155,10 +272,70 @@ public class CompanyResource {
         return user;
     }
 
-    private List<User> resolveUsers(List<Long> userIds) {
-        if (userIds == null || userIds.isEmpty()) {
-            return List.of();
+    private java.util.List<User> resolveUsers(java.util.List<Long> userIds, java.util.List<Long> tamIds) {
+        java.util.List<Long> ids = new java.util.ArrayList<>();
+        if (userIds != null) {
+            ids.addAll(userIds);
         }
-        return User.list("id in ?1 and type in ?2", userIds, List.of(User.TYPE_USER, User.TYPE_TAM));
+        if (tamIds != null) {
+            ids.addAll(tamIds);
+        }
+        if (ids.isEmpty()) {
+            return java.util.List.of();
+        }
+        return User.list("id in ?1 and type in ?2", ids, java.util.List.of(User.TYPE_USER, User.TYPE_TAM));
+    }
+
+    private java.util.Set<Long> applyEntitlements(Company company, java.util.List<Long> entitlementIds,
+            java.util.List<Long> supportLevelIds, java.util.List<CompanyEntitlement> existingEntitlements) {
+        java.util.Set<Long> selectedEntitlementIds = new java.util.HashSet<>();
+        if (entitlementIds == null || supportLevelIds == null) {
+            return selectedEntitlementIds;
+        }
+        java.util.Map<Long, CompanyEntitlement> byEntitlement = new java.util.HashMap<>();
+        for (CompanyEntitlement entry : existingEntitlements) {
+            if (entry.entitlement != null) {
+                byEntitlement.put(entry.entitlement.id, entry);
+            }
+        }
+        int count = Math.min(entitlementIds.size(), supportLevelIds.size());
+        for (int index = 0; index < count; index++) {
+            Long entitlementId = entitlementIds.get(index);
+            Long supportLevelId = supportLevelIds.get(index);
+            if (entitlementId == null || supportLevelId == null) {
+                continue;
+            }
+            if (!selectedEntitlementIds.add(entitlementId)) {
+                continue;
+            }
+            Entitlement entitlement = Entitlement.findById(entitlementId);
+            SupportLevel level = SupportLevel.findById(supportLevelId);
+            if (entitlement == null || level == null) {
+                continue;
+            }
+            CompanyEntitlement entry = byEntitlement.get(entitlementId);
+            if (entry == null) {
+                entry = new CompanyEntitlement();
+                entry.company = company;
+                entry.entitlement = entitlement;
+                entry.supportLevel = level;
+                entry.persist();
+                continue;
+            }
+            entry.supportLevel = level;
+        }
+        return selectedEntitlementIds;
+    }
+
+    private void validatePrimaryContactUser(String username, String email, String password) {
+        if (username == null || username.isEmpty()) {
+            throw new BadRequestException("Primary Contact username is required");
+        }
+        if (email == null || email.isEmpty()) {
+            throw new BadRequestException("Primary Contact email is required");
+        }
+        if (password == null || password.isEmpty()) {
+            throw new BadRequestException("Primary Contact password is required");
+        }
     }
 }

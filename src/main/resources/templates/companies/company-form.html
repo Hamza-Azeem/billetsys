@@ -44,6 +44,57 @@
                             </label>
                         </div>
                         <div>
+                            <label>Phone Number
+                                <input type="text" name="phoneNumber" value="{company.phoneNumber}">
+                            </label>
+                        </div>
+                        <div>
+                            <label>Primary Contact
+                                {#if primaryContact.id == null}
+                                <div>
+                                    <label>Primary Contact Username
+                                        <input type="text" name="primaryContactUsername" value="{primaryContact.name}" required>
+                                    </label>
+                                </div>
+                                <div>
+                                    <label>Primary Contact Email
+                                        <input type="text" name="primaryContactEmail" value="{primaryContact.email}" required>
+                                    </label>
+                                </div>
+                                <div>
+                                    <label>Primary Contact Phone Number
+                                        <input type="text" name="primaryContactPhoneNumber"
+                                               value="{primaryContact.phoneNumber}">
+                                    </label>
+                                </div>
+                                <div>
+                                    <label>Primary Contact Phone Number Extension
+                                        <input type="text" name="primaryPhoneNumberExtension"
+                                               value="{primaryContact.phoneExtension}">
+                                    </label>
+                                </div>
+                                <div>
+                                    <label>
+                                        Primary Contact Password
+                                        <input type="password" name="primaryContactPassword" {#if primaryContact.id == null}required{/if}>
+                                        {#if primaryContact.id != null}
+                                            <small>Leave blank to keep the current password.</small>
+                                        {/if}
+                                    </label>
+                                </div>
+                                {#else}
+                                    <select style="width: 100%;" name="primaryContact">
+                                        {#for user in users}
+                                            {#if selectedUserIds.contains(user.id)}
+                                                <option value="{user.id}" {#if user.id == primaryContact.id} selected {/if}>{user.name} ({user.email})</option>
+                                            {/if}
+                                        {/for}
+                                    </select>
+                                {/if}
+
+                            </label>
+                        </div>
+                        <div>
                             <label>Country
                                     {#countrySelect selectedCountry=company.country countries=countries /}
                             </label>
@@ -113,7 +164,8 @@
                                     <select id="selectedUsers" name="userIds" multiple size="10" style="width: 100%;">
                                         {#for user in users}
                                             {#if selectedUserIds.contains(user.id)}
-                                                <option value="{user.id}">{user.name} ({user.email})</option>
+                                                <option value="{user.id}" {#if primaryContact != null &&
+                                                user.id == primaryContact.id} disabled {/if}>{user.name} ({user.email})</option>
                                             {/if}
                                         {/for}
                                     </select>
@@ -151,11 +203,12 @@
                     </div>
                 </div>
                 <div class="form-actions">
-                    <a class="secondary-button" href="/admin/companies">Cancel</a>
+                    <a class="secondary-button" href="/companies">Cancel</a>
                     <button type="submit" class="action-button">Save</button>
                 </div>
             </form>
         </div>
+
         <script>
             function moveSelected(sourceId, targetId) {
                 const source = document.getElementById(sourceId);
@@ -174,6 +227,7 @@
                     return;
                 }
                 Array.from(select.options).forEach(option => {
+                    option.disabled = false;
                     option.selected = true;
                 });
             }

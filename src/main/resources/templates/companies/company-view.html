@@ -37,6 +37,22 @@
                     <td>{#if company.country}{company.country.name}{/if}</td>
                 </tr>
                 <tr>
+                    <th>Phone Number</th>
+                    <td>{#if company.phoneNumber}{company.phoneNumber}{/if}</td>
+                </tr>
+                <tr>
+                    <th>Primary Contact</th>
+                    <td>{#if company.primaryContact}{company.primaryContact.email}{/if}</td>
+                </tr>
+                <tr>
+                    <th>Primary Contact Phone Number</th>
+                    <td>{#if company.primaryContact}{company.primaryContact.phoneNumber}{/if}</td>
+                </tr>
+                <tr>
+                    <th>Primary Contact Phone Number Extension</th>
+                    <td>{#if company.primaryContact}{company.primaryContact.phoneExtension}{/if}</td>
+                </tr>
+                <tr>
                     <th>Time Zone</th>
                     <td>{#if company.timezone}{company.timezone.name}{/if}</td>
                 </tr>
@@ -79,8 +95,8 @@
                 </tbody>
             </table>
             <div class="form-actions">
-                <a class="secondary-button" href="/admin/companies">Ok</a>
-                <a class="action-button" href="/admin/companies/{company.id}/edit">Edit</a>
+                <a class="secondary-button" href="/companies">Ok</a>
+                <a class="action-button" href="/companies/{company.id}/edit">Edit</a>
             </div>
         </div>
     {/content}

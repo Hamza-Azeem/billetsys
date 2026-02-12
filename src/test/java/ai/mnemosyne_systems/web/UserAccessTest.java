@@ -46,7 +46,7 @@ class UserAccessTest {
         RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/admin/users/" + adminId).then().statusCode(200)
                 .body(Matchers.containsString("Edit"));
 
-        RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/admin/companies").then().statusCode(200)
+        RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/companies").then().statusCode(200)
                 .body(Matchers.containsString("Companies")).body(Matchers.containsString("Name"))
                 .body(Matchers.containsString("Country"));
 
@@ -61,7 +61,7 @@ class UserAccessTest {
         RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/admin/support-levels").then().statusCode(200)
                 .body(Matchers.containsString("Support Levels"));
 
-        RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/admin/companies/create").then().statusCode(200)
+        RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/companies/create").then().statusCode(200)
                 .body(Matchers.containsString("Entitlement")).body(Matchers.containsString("Service level"));
 
         Long companyId = createCompany(cookie, "Cycle Co");
@@ -257,14 +257,16 @@ class UserAccessTest {
 
         RestAssured.given().redirects().follow(false).cookie(AuthHelper.AUTH_COOKIE, cookie)
                 .contentType(ContentType.URLENC).formParam("name", "Coverage Co")
-                .formParam("country", "United States of America").post("/companies").then().statusCode(303);
+                .formParam("country", "United States of America").formParam("primaryContactUsername", "username")
+                .formParam("primaryContactEmail", "user@@email").formParam("primaryContactPassword", "password")
+                .post("/companies").then().statusCode(303);
         Company company = Company.find("name", "Coverage Co").firstResult();
         Assertions.assertNotNull(company);
 
         RestAssured.given().redirects().follow(false).cookie(AuthHelper.AUTH_COOKIE, cookie)
                 .contentType(ContentType.URLENC).formParam("name", "Coverage Co Updated")
-                .formParam("country", "United States of America").post("/companies/" + company.id).then()
-                .statusCode(303);
+                .formParam("country", "United States of America").formParam("primaryContact", company.primaryContact.id)
+                .post("/companies/" + company.id).then().statusCode(303);
         Company updatedCompany = refreshedCompany(company.id);
         Assertions.assertEquals("Coverage Co Updated", updatedCompany.name);
 
