@@ -141,7 +141,11 @@ public class UserSeeder {
             tam = seedUser("tam", "Technical Account Manager", "tam@mnemosyne-systems.ai", "+1-555-0300", "300",
                     "America/Chicago", "US", User.TYPE_TAM, "tam");
         }
-
+        User primaryContact = User.find("email", "primaryContact@sample.com").firstResult();
+        if (primaryContact == null) {
+            primaryContact = seedUser("primaryContact", "Company Primary Contact", "primaryContact@sample.com",
+                    "+1-555-0333", "300", "America/Chicago", "US", User.TYPE_USER, "primaryContact");
+        }
         Company company = Company
                 .find("select distinct c from Company c left join fetch c.users where c.name = ?1", "A").firstResult();
         if (company == null) {
@@ -149,6 +153,7 @@ public class UserSeeder {
             company.name = "A";
             company.country = findCountryByCode("US");
             company.timezone = findTimezoneByName("America/New_York");
+            company.primaryContact = primaryContact;
             company.persist();
         }
         if (company.country == null) {
@@ -162,6 +167,7 @@ public class UserSeeder {
         addUserIfMissing(company, user1);
         addUserIfMissing(company, user2);
         addUserIfMissing(company, tam);
+        addUserIfMissing(company, primaryContact);
 
         CompanyEntitlement enterpriseHigh = ensureCompanyEntitlement(company, "Enterprise", "High");
         Ticket a1 = seedTicket(Ticket.formatName(company, 1), company, user1, enterpriseHigh);

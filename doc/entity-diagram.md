@@ -33,6 +33,7 @@ erDiagram
         STRING zip
         BIGINT country_id FK
         BIGINT timezone_id FK
+        BIGINT primary_contact_id FK
     }
 
     USER {
@@ -115,6 +116,7 @@ erDiagram
     TIMEZONE ||--o{ USER : assigns
     COMPANY ||--o{ TICKET : has
     COMPANY }o--o{ USER : associates
+    COMPANY }o--|| PRIMARY_CONTACT : has
     COMPANY ||--o{ COMPANY_ENTITLEMENT : has
     USER ||--o{ TICKET : requests
     TICKET ||--o{ MESSAGE : has
