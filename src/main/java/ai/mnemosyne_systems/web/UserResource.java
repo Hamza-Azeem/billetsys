@@ -8,6 +8,7 @@
 
 package ai.mnemosyne_systems.web;
 
+import ai.mnemosyne_systems.model.Category;
 import ai.mnemosyne_systems.model.Company;
 import ai.mnemosyne_systems.model.CompanyEntitlement;
 import ai.mnemosyne_systems.model.Message;
@@ -256,13 +257,16 @@ public class UserResource {
                 .find("select distinct ce from CompanyEntitlement ce join fetch ce.entitlement join fetch ce.supportLevel where ce.company = ?1",
                         company)
                 .list();
+        java.util.List<Category> categories = Category.listAll();
+        Category defaultCategory = Category.findDefault();
         return ticketCreateTemplate.data("companyEntitlements", entitlements)
                 .data("ticketName", company == null ? "" : Ticket.previewNextName(company))
                 .data("assignedCount", data.assignedTickets.size()).data("openCount", data.openTickets.size())
                 .data("ticketsBase", "/user/tickets")
                 .data("showSupportUsers", User.TYPE_TAM.equalsIgnoreCase(user.type))
                 .data("usersBase", User.TYPE_TAM.equalsIgnoreCase(user.type) ? "/tam/users" : "/user/users")
-                .data("currentUser", user);
+                .data("currentUser", user).data("categories", categories)
+                .data("defaultCategoryId", defaultCategory == null ? null : defaultCategory.id);
     }
 
     @POST
@@ -274,6 +278,7 @@ public class UserResource {
         String status = AttachmentHelper.readFormValue(input, "status");
         String messageBody = AttachmentHelper.readFormValue(input, "message");
         Long companyEntitlementId = AttachmentHelper.readFormLong(input, "companyEntitlementId");
+        Long categoryId = AttachmentHelper.readFormLong(input, "categoryId");
         if (status == null || status.isBlank()) {
             throw new BadRequestException("Status is required");
         }
@@ -301,6 +306,7 @@ public class UserResource {
         ticket.company = entitlement.company;
         ticket.requester = user;
         ticket.companyEntitlement = entitlement;
+        ticket.category = categoryId != null ? Category.findById(categoryId) : Category.findDefault();
         ticket.persist();
         Message message = new Message();
         message.body = messageBody.trim();
@@ -456,6 +462,7 @@ public class UserResource {
                 }
             }
         }
+        java.util.List<Category> categories = Category.listAll();
         return tamTicketDetailTemplate.data("ticket", ticket).data("displayStatus", displayStatus)
                 .data("supportUsers", supportUsers).data("tamUsers", tamUsers).data("messages", messages)
                 .data("messageLabels", messageLabels).data("messageAuthorNames", messageAuthorNames)
@@ -466,7 +473,7 @@ public class UserResource {
                 .data("ticketsBase", "/user/tickets")
                 .data("showSupportUsers", User.TYPE_TAM.equalsIgnoreCase(user.type))
                 .data("usersBase", User.TYPE_TAM.equalsIgnoreCase(user.type) ? "/tam/users" : "/user/users")
-                .data("currentUser", user);
+                .data("currentUser", user).data("categories", categories);
     }
 
     private List<ai.mnemosyne_systems.model.Message> loadMessages(Ticket ticket) {
@@ -902,6 +909,8 @@ public class UserResource {
         displayTicket.status = "Assigned";
         displayTicket.company = ticket.company;
         displayTicket.companyEntitlement = ticket.companyEntitlement;
+        displayTicket.category = ticket.category;
+        displayTicket.externalIssueLink = ticket.externalIssueLink;
         return displayTicket;
     }
 
@@ -915,6 +924,8 @@ public class UserResource {
         displayTicket.status = ticket.status;
         displayTicket.company = ticket.company;
         displayTicket.companyEntitlement = ticket.companyEntitlement;
+        displayTicket.category = ticket.category;
+        displayTicket.externalIssueLink = ticket.externalIssueLink;
         return displayTicket;
     }
 

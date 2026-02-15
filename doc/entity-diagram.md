@@ -57,6 +57,8 @@ erDiagram
         BIGINT company_id FK
         BIGINT requester_id FK
         BIGINT company_entitlement_id FK
+        BIGINT category_id FK
+        STRING external_issue_link
     }
 
     MESSAGE {
@@ -94,6 +96,12 @@ erDiagram
         STRING normal_color
     }
 
+    CATEGORY {
+        BIGINT id PK
+        STRING name
+        BOOLEAN is_default
+    }
+
     COMPANY_ENTITLEMENT {
         BIGINT id PK
         BIGINT company_id FK
@@ -118,4 +126,5 @@ erDiagram
     ENTITLEMENT ||--o{ COMPANY_ENTITLEMENT : includes
     SUPPORT_LEVEL ||--o{ COMPANY_ENTITLEMENT : levels
     COMPANY_ENTITLEMENT ||--o{ TICKET : applies
+    CATEGORY ||--o{ TICKET : categorizes
 ```

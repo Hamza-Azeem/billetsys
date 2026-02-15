@@ -284,3 +284,10 @@ VALUES (nextval('support_level_seq'), 'Normal', 'Default response window', 60, '
 
 INSERT INTO support_levels (id, name, description, critical, critical_color, escalate, escalate_color, normal, normal_color)
 VALUES (nextval('support_level_seq'), 'High', 'Escalated response window', 60, 'Red', 90, 'Yellow', 120, 'White');
+
+-- =====================
+-- CATEGORIES
+-- =====================
+INSERT INTO categories (id, name, is_default) VALUES (nextval('category_seq'), 'Feature', false);
+INSERT INTO categories (id, name, is_default) VALUES (nextval('category_seq'), 'Bug', false);
+INSERT INTO categories (id, name, is_default) VALUES (nextval('category_seq'), 'Question', true);

@@ -40,6 +40,13 @@ public class Ticket extends PanacheEntityBase {
     @Column(nullable = false)
     public String status;
 
+    @ManyToOne
+    @JoinColumn(name = "category_id")
+    public Category category;
+
+    @Column(name = "external_issue_link")
+    public String externalIssueLink;
+
     @ManyToOne(optional = false)
     @JoinColumn(name = "company_id", nullable = false)
     public Company company;

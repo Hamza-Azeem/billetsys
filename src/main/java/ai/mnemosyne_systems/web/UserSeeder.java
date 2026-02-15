@@ -8,6 +8,7 @@
 
 package ai.mnemosyne_systems.web;
 
+import ai.mnemosyne_systems.model.Category;
 import ai.mnemosyne_systems.model.Attachment;
 import ai.mnemosyne_systems.model.Company;
 import ai.mnemosyne_systems.model.Country;
@@ -201,6 +202,10 @@ public class UserSeeder {
         seedSupportLevel("Low", "Standard response window", 60, "Red", 720, "Yellow", 1440, "White");
         seedSupportLevel("Normal", "Default response window", 60, "Red", 120, "Yellow", 720, "White");
         seedSupportLevel("High", "Escalated response window", 60, "Red", 90, "Yellow", 120, "White");
+
+        seedCategory("Feature", false);
+        seedCategory("Bug", false);
+        seedCategory("Question", true);
     }
 
     private Country findCountryByCode(String code) {
@@ -281,7 +286,11 @@ public class UserSeeder {
             ticket.company = company;
             ticket.requester = requester;
             ticket.companyEntitlement = entitlement;
+            ticket.category = Category.findDefault();
             ticket.persist();
+        }
+        if (ticket.category == null) {
+            ticket.category = Category.findDefault();
         }
         if (ticket.status == null || ticket.status.isBlank()) {
             ticket.status = "Open";
@@ -417,6 +426,17 @@ public class UserSeeder {
         level.normal = normal;
         level.normalColor = normalColor;
         level.persist();
+    }
+
+    private void seedCategory(String name, boolean isDefault) {
+        Category category = Category.find("name", name).firstResult();
+        if (category != null) {
+            return;
+        }
+        category = new Category();
+        category.name = name;
+        category.isDefault = isDefault;
+        category.persist();
     }
 
     private void removeUser(String email) {

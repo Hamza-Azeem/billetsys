@@ -8,6 +8,7 @@
 
 package ai.mnemosyne_systems.web;
 
+import ai.mnemosyne_systems.model.Category;
 import ai.mnemosyne_systems.model.Company;
 import ai.mnemosyne_systems.model.CompanyEntitlement;
 import ai.mnemosyne_systems.model.Message;
@@ -304,8 +305,12 @@ public class SupportResource {
         User user = requireSupport(auth);
         SupportTicketCounts counts = loadTicketCounts(user);
         Ticket ticket = new Ticket();
+        List<Category> categories = Category.listAll();
+        Category defaultCategory = Category.findDefault();
         return ticketFormTemplate.data("ticket", ticket).data("companies", Company.listAll())
                 .data("companyEntitlements", java.util.List.of()).data("selectedCompanyEntitlementId", null)
+                .data("categories", categories)
+                .data("defaultCategoryId", defaultCategory == null ? null : defaultCategory.id)
                 .data("action", "/support/tickets").data("ticketName", "").data("entitlementsBase", "/support/tickets")
                 .data("assignedCount", counts.assignedCount).data("openCount", counts.openCount)
                 .data("ticketsBase", "/support").data("showSupportUsers", true).data("currentUser", user);
@@ -373,6 +378,7 @@ public class SupportResource {
         java.util.List<CompanyEntitlement> entitlements = CompanyEntitlement.find(
                 "select distinct ce from CompanyEntitlement ce join fetch ce.entitlement join fetch ce.supportLevel where ce.company = ?1",
                 ticket.company).list();
+        java.util.List<Category> categories = Category.listAll();
         return ticketDetailTemplate.data("ticket", ticket).data("displayStatus", displayStatus)
                 .data("supportUsers", supportUsers).data("tamUsers", tamUsers).data("messages", messages)
                 .data("messageLabels", messageLabels).data("messageAuthorNames", messageAuthorNames)
@@ -384,7 +390,8 @@ public class SupportResource {
                 .data("supportUserBase", "/support/support-users").data("tamUserBase", "/support/tam-users")
                 .data("messageAction", "/support/tickets/" + id + "/messages")
                 .data("assignedCount", counts.assignedCount).data("openCount", counts.openCount)
-                .data("ticketsBase", "/support").data("showSupportUsers", true).data("currentUser", user);
+                .data("ticketsBase", "/support").data("showSupportUsers", true).data("currentUser", user)
+                .data("categories", categories);
     }
 
     private List<Message> loadMessages(Ticket ticket) {
@@ -438,6 +445,7 @@ public class SupportResource {
         String messageBody = AttachmentHelper.readFormValue(input, "message");
         Long companyId = AttachmentHelper.readFormLong(input, "companyId");
         Long companyEntitlementId = AttachmentHelper.readFormLong(input, "companyEntitlementId");
+        Long categoryId = AttachmentHelper.readFormLong(input, "categoryId");
         if (status == null || status.isBlank()) {
             throw new BadRequestException("Status is required");
         }
@@ -468,6 +476,7 @@ public class SupportResource {
         ticket.company = company;
         ticket.requester = user;
         ticket.companyEntitlement = entitlement;
+        ticket.category = categoryId != null ? Category.findById(categoryId) : Category.findDefault();
         ticket.persist();
         assignCompanyTams(ticket);
         Message message = new Message();
@@ -485,7 +494,8 @@ public class SupportResource {
     @Transactional
     public Response updateTicket(@CookieParam(AuthHelper.AUTH_COOKIE) String auth,
             @jakarta.ws.rs.PathParam("id") Long id, @FormParam("status") String status,
-            @FormParam("companyId") Long companyId, @FormParam("companyEntitlementId") Long companyEntitlementId) {
+            @FormParam("companyId") Long companyId, @FormParam("companyEntitlementId") Long companyEntitlementId,
+            @FormParam("categoryId") Long categoryId, @FormParam("externalIssueLink") String externalIssueLink) {
         User user = requireSupport(auth);
         Ticket ticket = Ticket.findById(id);
         if (ticket == null) {
@@ -512,6 +522,9 @@ public class SupportResource {
         ticket.status = status;
         ticket.company = company;
         ticket.companyEntitlement = entitlement;
+        ticket.category = categoryId != null ? Category.findById(categoryId) : null;
+        ticket.externalIssueLink = externalIssueLink != null && !externalIssueLink.isBlank() ? externalIssueLink.trim()
+                : null;
         if ("Assigned".equalsIgnoreCase(status)) {
             boolean assigned = ticket.supportUsers.stream()
                     .anyMatch(existing -> existing.id != null && existing.id.equals(user.id));
@@ -585,12 +598,16 @@ public class SupportResource {
         ticket.company = company;
         ticket.name = "";
         String ticketName = Ticket.previewNextName(company);
+        java.util.List<Category> categories = Category.listAll();
+        Category defaultCategory = Category.findDefault();
         return ticketFormTemplate.data("ticket", ticket).data("companies", Company.listAll())
                 .data("companyEntitlements", entitlements).data("selectedCompanyEntitlementId", null)
                 .data("action", "/support/tickets").data("ticketName", ticketName)
                 .data("assignedCount", counts.assignedCount).data("openCount", counts.openCount)
                 .data("ticketsBase", "/support").data("showSupportUsers", true)
-                .data("entitlementsBase", "/support/tickets").data("message", message).data("currentUser", user);
+                .data("entitlementsBase", "/support/tickets").data("message", message).data("currentUser", user)
+                .data("categories", categories)
+                .data("defaultCategoryId", defaultCategory == null ? null : defaultCategory.id);
     }
 
     private String formatDate(LocalDateTime date) {
@@ -784,6 +801,8 @@ public class SupportResource {
         displayTicket.status = "Assigned";
         displayTicket.company = ticket.company;
         displayTicket.companyEntitlement = ticket.companyEntitlement;
+        displayTicket.category = ticket.category;
+        displayTicket.externalIssueLink = ticket.externalIssueLink;
         return displayTicket;
     }
 
@@ -797,6 +816,8 @@ public class SupportResource {
         displayTicket.status = ticket.status;
         displayTicket.company = ticket.company;
         displayTicket.companyEntitlement = ticket.companyEntitlement;
+        displayTicket.category = ticket.category;
+        displayTicket.externalIssueLink = ticket.externalIssueLink;
         return displayTicket;
     }
 

@@ -8,6 +8,7 @@
 
 package ai.mnemosyne_systems.web;
 
+import ai.mnemosyne_systems.model.Category;
 import ai.mnemosyne_systems.model.Company;
 import ai.mnemosyne_systems.model.CompanyEntitlement;
 import ai.mnemosyne_systems.model.Message;
@@ -92,8 +93,12 @@ public class TicketResource {
     @Path("/new")
     public TemplateInstance createForm(@CookieParam(AuthHelper.AUTH_COOKIE) String auth) {
         User user = requireSupport(auth);
+        List<Category> categories = Category.listAll();
+        Category defaultCategory = Category.findDefault();
         return formTemplate.data("ticket", new Ticket()).data("companies", Company.listAll())
                 .data("companyEntitlements", java.util.List.of()).data("selectedCompanyEntitlementId", null)
+                .data("categories", categories)
+                .data("defaultCategoryId", defaultCategory == null ? null : defaultCategory.id)
                 .data("action", "/tickets").data("title", "New Ticket").data("currentUser", user);
     }
 
@@ -114,12 +119,15 @@ public class TicketResource {
                 messageLabels.put(message.id, formatDate(message.date));
             }
         }
+        List<Category> categories = Category.listAll();
         return formTemplate.data("ticket", ticket).data("companies", Company.listAll())
                 .data("companyEntitlements", ticket.company == null ? java.util.List.of() : CompanyEntitlement.find(
                         "select distinct ce from CompanyEntitlement ce join fetch ce.entitlement join fetch ce.supportLevel where ce.company = ?1",
                         ticket.company).list())
                 .data("selectedCompanyEntitlementId",
                         ticket.companyEntitlement == null ? null : ticket.companyEntitlement.id)
+                .data("categories", categories)
+                .data("defaultCategoryId", ticket.category == null ? null : ticket.category.id)
                 .data("messages", messages).data("messageLabels", messageLabels).data("action", "/tickets/" + id)
                 .data("title", "Edit Ticket").data("currentUser", user);
     }
@@ -149,7 +157,8 @@ public class TicketResource {
     @POST
     @Transactional
     public Response create(@CookieParam(AuthHelper.AUTH_COOKIE) String auth, @FormParam("status") String status,
-            @FormParam("companyId") Long companyId, @FormParam("companyEntitlementId") Long companyEntitlementId) {
+            @FormParam("companyId") Long companyId, @FormParam("companyEntitlementId") Long companyEntitlementId,
+            @FormParam("categoryId") Long categoryId) {
         User user = requireSupport(auth);
         if (status == null || status.isBlank()) {
             throw new BadRequestException("Status is required");
@@ -169,12 +178,14 @@ public class TicketResource {
         if (entitlement == null) {
             throw new BadRequestException("Entitlement is required");
         }
+        Category category = categoryId != null ? Category.findById(categoryId) : Category.findDefault();
         Ticket ticket = new Ticket();
         ticket.name = Ticket.nextName(company);
         ticket.status = status;
         ticket.company = company;
         ticket.requester = user;
         ticket.companyEntitlement = entitlement;
+        ticket.category = category;
         ticket.persist();
         return Response.seeOther(URI.create("/tickets")).build();
     }
@@ -184,7 +195,8 @@ public class TicketResource {
     @Transactional
     public Response update(@CookieParam(AuthHelper.AUTH_COOKIE) String auth, @PathParam("id") Long id,
             @FormParam("status") String status, @FormParam("companyId") Long companyId,
-            @FormParam("companyEntitlementId") Long companyEntitlementId) {
+            @FormParam("companyEntitlementId") Long companyEntitlementId, @FormParam("categoryId") Long categoryId,
+            @FormParam("externalIssueLink") String externalIssueLink) {
         User user = requireSupport(auth);
         Ticket ticket = Ticket.findById(id);
         if (ticket == null) {
@@ -212,6 +224,9 @@ public class TicketResource {
         ticket.company = company;
         ticket.requester = user;
         ticket.companyEntitlement = entitlement;
+        ticket.category = categoryId != null ? Category.findById(categoryId) : null;
+        ticket.externalIssueLink = externalIssueLink != null && !externalIssueLink.isBlank() ? externalIssueLink.trim()
+                : null;
         return Response.seeOther(URI.create("/tickets")).build();
     }
 
@@ -243,8 +258,12 @@ public class TicketResource {
         Ticket ticket = new Ticket();
         ticket.company = company;
         ticket.name = Ticket.previewNextName(company);
+        java.util.List<Category> categories = Category.listAll();
+        Category defaultCategory = Category.findDefault();
         return formTemplate.data("ticket", ticket).data("companies", Company.listAll())
                 .data("companyEntitlements", entitlements).data("selectedCompanyEntitlementId", null)
+                .data("categories", categories)
+                .data("defaultCategoryId", defaultCategory == null ? null : defaultCategory.id)
                 .data("action", "/tickets").data("title", "New Ticket").data("currentUser", user);
     }
 

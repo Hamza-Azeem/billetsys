@@ -8,6 +8,7 @@
 
 package ai.mnemosyne_systems.web;
 
+import ai.mnemosyne_systems.model.Category;
 import ai.mnemosyne_systems.model.Attachment;
 import ai.mnemosyne_systems.model.Company;
 import ai.mnemosyne_systems.model.CompanyEntitlement;
@@ -72,6 +73,7 @@ class UserAccessTest {
     void supportCanAccessSupportUsersMenu() {
         ensureUser("support1", "support1@mnemosyne-systems.ai", User.TYPE_SUPPORT, "support1");
         ensureUser("support2", "support2@mnemosyne-systems.ai", User.TYPE_SUPPORT, "support2");
+        ensureDefaultCategories();
         Long companyId = ensureCompany("Support Co");
         ensureCompanyUsers(companyId, "tam@mnemosyne-systems.ai");
         ai.mnemosyne_systems.model.Ticket supportTicket = ensureTicket(companyId);
@@ -86,7 +88,8 @@ class UserAccessTest {
                 .body(Matchers.containsString("Tickets")).body(Matchers.containsString("Open tickets"))
                 .body(Matchers.containsString("Closed tickets")).body(Matchers.containsString(supportTicketName))
                 .body(Matchers.containsString("Assigned")).body(Matchers.containsString("Create"))
-                .body(Matchers.containsString("A-0000")).body(Matchers.containsString("support1"));
+                .body(Matchers.containsString("A-0000")).body(Matchers.containsString("support1"))
+                .body(Matchers.containsString("Category"));
         ai.mnemosyne_systems.model.User supportUser = ai.mnemosyne_systems.model.User
                 .find("email", "support1@mnemosyne-systems.ai").firstResult();
         int assignedCount = ai.mnemosyne_systems.model.Ticket.find(
@@ -107,7 +110,8 @@ class UserAccessTest {
         RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/support/tickets/create").then().statusCode(200)
                 .body(Matchers.containsString("Create")).body(Matchers.containsString("Message"))
                 .body(Matchers.not(Matchers.containsString("Status"))).body(Matchers.containsString("Entitlement"))
-                .body(Matchers.containsString("form-card full-width"));
+                .body(Matchers.containsString("form-card full-width")).body(Matchers.containsString("Category"))
+                .body(Matchers.containsString("Question"));
 
         Long ticketId = supportTicket == null ? null : supportTicket.id;
         RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/tickets/" + ticketId + "/edit").then()
@@ -123,6 +127,7 @@ class UserAccessTest {
                 .body(Matchers.containsString("Company")).body(Matchers.containsString("Entitlement"))
                 .body(Matchers.containsString("Service Level")).body(Matchers.containsString("TAMs"))
                 .body(Matchers.containsString("/support/tam-users/")).body(Matchers.containsString("tam"))
+                .body(Matchers.containsString("Category")).body(Matchers.containsString("External issue"))
                 .body(Matchers.not(Matchers.containsString("Cancel")))
                 .body(Matchers.not(Matchers.containsString("Back")));
 
@@ -164,6 +169,7 @@ class UserAccessTest {
     @Test
     void userCanAccessUserTicketsMenu() {
         ensureUser("user", "user@mnemosyne-systems.ai", User.TYPE_USER, "user");
+        ensureDefaultCategories();
         Long companyId = ensureCompany("Test Co");
         ai.mnemosyne_systems.model.Ticket userTicket = ensureTicket(companyId);
         String userTicketName = userTicket == null ? "" : userTicket.name;
@@ -188,6 +194,7 @@ class UserAccessTest {
                 .body(Matchers.containsString("Support users")).body(Matchers.containsString("Company"))
                 .body(Matchers.containsString("Entitlement")).body(Matchers.containsString("Service Level"))
                 .body(Matchers.containsString("value=\"Assigned\"")).body(Matchers.containsString("TAMs"))
+                .body(Matchers.containsString("Category")).body(Matchers.containsString("External issue"))
                 .body(Matchers.containsString("Reply")).body(Matchers.not(Matchers.containsString("Back")));
         RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/tickets/" + ticketId).then().statusCode(200)
                 .body(Matchers.containsString("/user/support-users/" + supportUser.id))
@@ -312,6 +319,7 @@ class UserAccessTest {
     @Test
     void supportCanManageTicketsAndMessages() {
         ensureUser("support3", "support3@mnemosyne-systems.ai", User.TYPE_SUPPORT, "support3");
+        ensureDefaultCategories();
         String cookie = login("support3", "support3");
         Long companyId = ensureCompany("Support CRUD Co");
         Company company = Company.findById(companyId);
@@ -325,12 +333,20 @@ class UserAccessTest {
                 .formParam("companyEntitlementId", entry.id).post("/tickets").then().statusCode(303);
         Ticket ticket = Ticket.find("company = ?1 order by id desc", company).firstResult();
         Assertions.assertNotNull(ticket);
+        Assertions.assertNotNull(ticket.category);
+        Assertions.assertEquals("Question", ticket.category.name);
 
+        Category bugCategory = Category.find("name", "Bug").firstResult();
         RestAssured.given().redirects().follow(false).cookie(AuthHelper.AUTH_COOKIE, cookie)
                 .contentType(ContentType.URLENC).formParam("status", "In Progress").formParam("companyId", company.id)
-                .formParam("companyEntitlementId", entry.id).post("/tickets/" + ticket.id).then().statusCode(303);
+                .formParam("companyEntitlementId", entry.id).formParam("categoryId", bugCategory.id)
+                .formParam("externalIssueLink", "https://github.com/example/issue/1").post("/tickets/" + ticket.id)
+                .then().statusCode(303);
         Ticket updatedTicket = refreshedTicket(ticket.id);
         Assertions.assertEquals("In Progress", updatedTicket.status);
+        Assertions.assertNotNull(updatedTicket.category);
+        Assertions.assertEquals("Bug", updatedTicket.category.name);
+        Assertions.assertEquals("https://github.com/example/issue/1", updatedTicket.externalIssueLink);
 
         byte[] attachmentData = "Attachment line one\nAttachment line two".getBytes(StandardCharsets.UTF_8);
         byte[] attachmentDataTwo = "Second attachment".getBytes(StandardCharsets.UTF_8);
@@ -354,7 +370,9 @@ class UserAccessTest {
 
         RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/support/tickets/" + ticket.id).then()
                 .statusCode(200).body(Matchers.containsString("note.txt")).body(Matchers.containsString("note-2.txt"))
-                .body(Matchers.containsString("text/plain")).body(Matchers.containsString("bytes"));
+                .body(Matchers.containsString("text/plain")).body(Matchers.containsString("bytes"))
+                .body(Matchers.containsString("Category")).body(Matchers.containsString("External issue"))
+                .body(Matchers.containsString("https://github.com/example/issue/1"));
 
         RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/attachments/" + attachment.id).then()
                 .statusCode(200).body(Matchers.containsString("note.txt"))
@@ -594,6 +612,25 @@ class UserAccessTest {
                 company.users.add(user);
             }
         }
+    }
+
+    @Transactional
+    void ensureDefaultCategories() {
+        if (Category.count() > 0) {
+            return;
+        }
+        Category feature = new Category();
+        feature.name = "Feature";
+        feature.isDefault = false;
+        feature.persist();
+        Category bug = new Category();
+        bug.name = "Bug";
+        bug.isDefault = false;
+        bug.persist();
+        Category question = new Category();
+        question.name = "Question";
+        question.isDefault = true;
+        question.persist();
     }
 
     String login(String username, String password) {

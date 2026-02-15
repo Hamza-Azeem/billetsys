@@ -16,6 +16,15 @@
                 <input type="text" name="ticketName" value="{#if ticketName??}{ticketName}{/if}" readonly>
             </label>
         </div>
+        <div>
+            <label>Category
+                <select name="categoryId">
+                    {#for cat in categories}
+                        <option value="{cat.id}" {#if defaultCategoryId != null && defaultCategoryId == cat.id}selected{/if}>{cat.name}</option>
+                    {/for}
+                </select>
+            </label>
+        </div>
         <input type="hidden" name="status" value="Open">
         <div>
             <label class="markdown-label" for="user-ticket-message">Message</label>

@@ -17,6 +17,15 @@
                 </label>
             </div>
             <div>
+                <label>Category
+                    <select name="categoryId">
+                        {#for cat in categories}
+                            <option value="{cat.id}" {#if ticket.category != null && ticket.category.id == cat.id}selected{/if}>{cat.name}</option>
+                        {/for}
+                    </select>
+                </label>
+            </div>
+            <div>
                 <label>Status
                     <select name="status" required>
                         <option value="Open" {#if ticket.status == 'Open'}selected{/if}>Open</option>
@@ -49,6 +58,11 @@
                     {#else}
                     <input type="text" value="{ticket.companyEntitlement.supportLevel.name}" readonly>
                     {/if}
+                </label>
+            </div>
+            <div>
+                <label>External issue
+                    <input type="text" name="externalIssueLink" value="{#if ticket.externalIssueLink != null}{ticket.externalIssueLink}{/if}">
                 </label>
             </div>
             <input type="hidden" name="companyId" value="{ticket.company.id}">

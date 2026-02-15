@@ -18,17 +18,15 @@
             <label>Company
                 <input type="text" value="{ticket.company.name}" readonly>
             </label>
-            <label>Status
+            <label>Category
                 {#if editableStatus?? && editableStatus}
-                <select name="status" required>
-                    <option value="Open" {#if displayStatus == 'Open'}selected{/if}>Open</option>
-                    <option value="Assigned" {#if displayStatus == 'Assigned'}selected{/if}>Assigned</option>
-                    <option value="In Progress" {#if displayStatus == 'In Progress'}selected{/if}>In Progress</option>
-                    <option value="Resolved" {#if displayStatus == 'Resolved'}selected{/if}>Resolved</option>
-                    <option value="Closed" {#if displayStatus == 'Closed'}selected{/if}>Closed</option>
+                <select name="categoryId">
+                    {#for cat in categories}
+                        <option value="{cat.id}" {#if ticket.category != null && ticket.category.id == cat.id}selected{/if}>{cat.name}</option>
+                    {/for}
                 </select>
                 {#else}
-                <input type="text" value="{displayStatus}" readonly>
+                    <input type="text" value="{#if ticket.category != null}{ticket.category.name}{#else}-{/if}" readonly>
                 {/if}
             </label>
             <label>Entitlement
@@ -38,15 +36,17 @@
                 <input type="text" value="{ticket.companyEntitlement.entitlement.name}" readonly>
                 {/if}
             </label>
-            <label>Support users
-                {#if supportUsers.isEmpty}
-                <input type="text" value="-" readonly>
+            <label>Status
+                {#if editableStatus?? && editableStatus}
+                    <select name="status" required>
+                        <option value="Open" {#if displayStatus == 'Open'}selected{/if}>Open</option>
+                        <option value="Assigned" {#if displayStatus == 'Assigned'}selected{/if}>Assigned</option>
+                        <option value="In Progress" {#if displayStatus == 'In Progress'}selected{/if}>In Progress</option>
+                        <option value="Resolved" {#if displayStatus == 'Resolved'}selected{/if}>Resolved</option>
+                        <option value="Closed" {#if displayStatus == 'Closed'}selected{/if}>Closed</option>
+                    </select>
                 {#else}
-                <div>
-                    {#for user in supportUsers}
-                    <a href="{supportUserBase}/{user.id}">{user.name}</a>{#if !user_isLast}, {/if}
-                    {/for}
-                </div>
+                    <input type="text" value="{displayStatus}" readonly>
                 {/if}
             </label>
             <label>Service Level
@@ -56,8 +56,16 @@
                 <input type="text" value="{ticket.companyEntitlement.supportLevel.name}" readonly>
                 {/if}
             </label>
-            <label class="ticket-detail-spacer" aria-hidden="true">
-                <input type="text" value="-" readonly>
+            <label>External issue
+                {#if editableStatus?? && editableStatus}
+                    <input type="text" name="externalIssueLink" value="{#if ticket.externalIssueLink != null}{ticket.externalIssueLink}{/if}">
+                {#else}
+                    {#if ticket.externalIssueLink != null && !ticket.externalIssueLink.isBlank}
+                        <a href="{ticket.externalIssueLink}" target="_blank" rel="noopener">{ticket.externalIssueLink}</a>
+                    {#else}
+                        <input type="text" value="-" readonly>
+                    {/if}
+                {/if}
             </label>
             <label>TAMs
                 {#if tamUsers.isEmpty}
@@ -69,6 +77,20 @@
                     {/for}
                 </div>
                 {/if}
+            </label>
+            <label>Support users
+                {#if supportUsers.isEmpty}
+                    <input type="text" value="-" readonly>
+                {#else}
+                    <div>
+                        {#for user in supportUsers}
+                            <a href="{supportUserBase}/{user.id}">{user.name}</a>{#if !user_isLast}, {/if}
+                        {/for}
+                    </div>
+                {/if}
+            </label>
+            <label class="ticket-detail-spacer" aria-hidden="true">
+                <input type="text" value="-" readonly>
             </label>
         </div>
         {#if editableStatus?? && editableStatus}
