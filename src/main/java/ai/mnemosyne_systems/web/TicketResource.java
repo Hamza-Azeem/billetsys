@@ -17,6 +17,7 @@ import io.quarkus.qute.Location;
 import io.quarkus.qute.Template;
 import io.quarkus.qute.TemplateInstance;
 import io.smallrye.common.annotation.Blocking;
+import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.Consumes;
@@ -53,6 +54,12 @@ public class TicketResource {
 
     @Location("tickets/form.html")
     Template formTemplate;
+
+    @Inject
+    SupportResource supportResource;
+
+    @Inject
+    UserResource userResource;
 
     @GET
     public TemplateInstance list(@CookieParam(AuthHelper.AUTH_COOKIE) String auth) {
@@ -111,6 +118,19 @@ public class TicketResource {
                         ticket.companyEntitlement == null ? null : ticket.companyEntitlement.id)
                 .data("messages", messages).data("messageLabels", messageLabels).data("action", "/tickets/" + id)
                 .data("title", "Edit Ticket").data("currentUser", user);
+    }
+
+    @GET
+    @Path("/{id}")
+    public Object viewTicket(@CookieParam(AuthHelper.AUTH_COOKIE) String auth, @PathParam("id") Long id) {
+        User user = AuthHelper.findUser(auth);
+        if (AuthHelper.isSupport(user)) {
+            return supportResource.ticketDetail(auth, id);
+        }
+        if (AuthHelper.isUser(user)) {
+            return userResource.ticketDetail(auth, id);
+        }
+        return Response.seeOther(URI.create("/")).build();
     }
 
     @POST

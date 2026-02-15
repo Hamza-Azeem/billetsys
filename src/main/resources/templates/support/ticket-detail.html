@@ -19,6 +19,7 @@
                 <input type="text" value="{ticket.company.name}" readonly>
             </label>
             <label>Status
+                {#if editableStatus?? && editableStatus}
                 <select name="status" required>
                     <option value="Open" {#if displayStatus == 'Open'}selected{/if}>Open</option>
                     <option value="Assigned" {#if displayStatus == 'Assigned'}selected{/if}>Assigned</option>
@@ -26,6 +27,9 @@
                     <option value="Resolved" {#if displayStatus == 'Resolved'}selected{/if}>Resolved</option>
                     <option value="Closed" {#if displayStatus == 'Closed'}selected{/if}>Closed</option>
                 </select>
+                {#else}
+                <input type="text" value="{displayStatus}" readonly>
+                {/if}
             </label>
             <label>Entitlement
                 {#if ticket.companyEntitlement == null || ticket.companyEntitlement.entitlement == null}
@@ -40,7 +44,7 @@
                 {#else}
                 <div>
                     {#for user in supportUsers}
-                    <a href="mailto:{user.email}">{user.email}</a>{#if !user_isLast}, {/if}
+                    <a href="{supportUserBase}/{user.id}">{user.name}</a>{#if !user_isLast}, {/if}
                     {/for}
                 </div>
                 {/if}
@@ -61,17 +65,19 @@
                 {#else}
                 <div>
                     {#for user in tamUsers}
-                    <a href="mailto:{user.email}">{user.email}</a>{#if !user_isLast}, {/if}
+                    <a href="{tamUserBase}/{user.id}">{user.name}</a>{#if !user_isLast}, {/if}
                     {/for}
                 </div>
                 {/if}
             </label>
         </div>
+        {#if editableStatus?? && editableStatus}
         <input type="hidden" name="companyId" value="{ticket.company.id}">
         <input type="hidden" name="companyEntitlementId" value="{ticket.companyEntitlement.id}">
         <div class="form-actions">
             <button type="submit" class="action-button">Save</button>
         </div>
+        {/if}
     </form>
 </div>
 
@@ -138,7 +144,15 @@
     <tr class="message-header">
         <td>{messageLabels.get(message.id)}</td>
         <td class="message-email">
-            {#if message.author != null}<a href="mailto:{message.author.email}">{message.author.email}</a>{#else}-{/if}
+            {#if message.author != null}
+            {#if messageAuthorLinks.containsKey(message.id)}
+            <a href="{messageAuthorLinks.get(message.id)}">{messageAuthorNames.get(message.id)}</a>
+            {#else}
+            {messageAuthorNames.get(message.id)}
+            {/if}
+            {#else}
+            -
+            {/if}
         </td>
     </tr>
     <tr>
@@ -166,7 +180,7 @@
 {/if}
 
 <h2>Reply</h2>
-<form method="post" action="/support/tickets/{ticket.id}/messages" enctype="multipart/form-data">
+<form method="post" action="{messageAction}" enctype="multipart/form-data">
     <div>
         <label class="markdown-label" for="support-reply-body">Reply</label>
         <div class="markdown-editor" data-markdown-editor>

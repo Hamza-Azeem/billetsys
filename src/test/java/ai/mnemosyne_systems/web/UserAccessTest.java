@@ -73,6 +73,7 @@ class UserAccessTest {
         ensureUser("support1", "support1@mnemosyne-systems.ai", User.TYPE_SUPPORT, "support1");
         ensureUser("support2", "support2@mnemosyne-systems.ai", User.TYPE_SUPPORT, "support2");
         Long companyId = ensureCompany("Support Co");
+        ensureCompanyUsers(companyId, "tam@mnemosyne-systems.ai");
         ai.mnemosyne_systems.model.Ticket supportTicket = ensureTicket(companyId);
         ensureMessage(supportTicket, "Sample ticket created.");
         String supportTicketName = supportTicket == null ? "" : supportTicket.name;
@@ -85,7 +86,7 @@ class UserAccessTest {
                 .body(Matchers.containsString("Tickets")).body(Matchers.containsString("Open tickets"))
                 .body(Matchers.containsString("Closed tickets")).body(Matchers.containsString(supportTicketName))
                 .body(Matchers.containsString("Assigned")).body(Matchers.containsString("Create"))
-                .body(Matchers.containsString("A-0000")).body(Matchers.containsString("support1@mnemosyne-systems.ai"));
+                .body(Matchers.containsString("A-0000")).body(Matchers.containsString("support1"));
         ai.mnemosyne_systems.model.User supportUser = ai.mnemosyne_systems.model.User
                 .find("email", "support1@mnemosyne-systems.ai").firstResult();
         int assignedCount = ai.mnemosyne_systems.model.Ticket.find(
@@ -117,10 +118,11 @@ class UserAccessTest {
 
         RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/support/tickets/" + ticketId).then()
                 .statusCode(200).body(Matchers.containsString("Sample ticket created."))
-                .body(Matchers.containsString("support1@mnemosyne-systems.ai")).body(Matchers.containsString("Ticket"))
-                .body(Matchers.containsString("Support users")).body(Matchers.containsString("Company"))
-                .body(Matchers.containsString("Entitlement")).body(Matchers.containsString("Service Level"))
-                .body(Matchers.containsString("TAMs")).body(Matchers.containsString("tam@mnemosyne-systems.ai"))
+                .body(Matchers.containsString("/support/support-users/")).body(Matchers.containsString("support1"))
+                .body(Matchers.containsString("Ticket")).body(Matchers.containsString("Support users"))
+                .body(Matchers.containsString("Company")).body(Matchers.containsString("Entitlement"))
+                .body(Matchers.containsString("Service Level")).body(Matchers.containsString("TAMs"))
+                .body(Matchers.containsString("/support/tam-users/")).body(Matchers.containsString("tam"))
                 .body(Matchers.not(Matchers.containsString("Cancel")))
                 .body(Matchers.not(Matchers.containsString("Back")));
 
@@ -132,6 +134,12 @@ class UserAccessTest {
         Ticket updatedSupportTicket = refreshedTicket(ticketId);
         Assertions.assertEquals("Assigned", updatedSupportTicket.status);
         Assertions.assertTrue(ticketHasSupportUser(ticketId, supportUser.id));
+        String userCookie = login("user", "user");
+        String tamCookie = login("tam", "tam");
+        RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, userCookie).get("/tickets/" + ticketId).then()
+                .statusCode(200).body(Matchers.containsString("value=\"Assigned\""));
+        RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, tamCookie).get("/tickets/" + ticketId).then().statusCode(200)
+                .body(Matchers.containsString("value=\"Assigned\""));
 
         RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/profile").then().statusCode(200)
                 .body(Matchers.containsString("Profile")).body(Matchers.containsString("Upload logo"))
@@ -156,7 +164,7 @@ class UserAccessTest {
         RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/user/tickets").then().statusCode(200)
                 .body(Matchers.containsString("Tickets")).body(Matchers.containsString("Open tickets"))
                 .body(Matchers.containsString("Closed tickets")).body(Matchers.containsString("Create"))
-                .body(Matchers.containsString("/user/tickets/"));
+                .body(Matchers.containsString("/tickets/"));
 
         RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/user/tickets/open").then().statusCode(200)
                 .body(Matchers.containsString("Open tickets")).body(Matchers.containsString("Create"));
@@ -165,12 +173,21 @@ class UserAccessTest {
                 .body(Matchers.containsString("Closed tickets")).body(Matchers.containsString("Create"));
 
         Long ticketId = userTicket == null ? null : userTicket.id;
+        User supportUser = User.find("email", "support1@mnemosyne-systems.ai").firstResult();
+        User tamUser = User.find("email", "tam@mnemosyne-systems.ai").firstResult();
         RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/user/tickets/" + ticketId).then()
                 .statusCode(200).body(Matchers.containsString(userTicketName)).body(Matchers.containsString("Ticket"))
                 .body(Matchers.containsString("Support users")).body(Matchers.containsString("Company"))
                 .body(Matchers.containsString("Entitlement")).body(Matchers.containsString("Service Level"))
-                .body(Matchers.containsString("TAMs")).body(Matchers.containsString("Reply"))
-                .body(Matchers.not(Matchers.containsString("Back")));
+                .body(Matchers.containsString("value=\"Assigned\"")).body(Matchers.containsString("TAMs"))
+                .body(Matchers.containsString("Reply")).body(Matchers.not(Matchers.containsString("Back")));
+        RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/tickets/" + ticketId).then().statusCode(200)
+                .body(Matchers.containsString("/user/support-users/" + supportUser.id))
+                .body(Matchers.containsString("/user/tam-users/" + tamUser.id));
+        RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/user/support-users/" + supportUser.id).then()
+                .statusCode(200).body(Matchers.containsString("Profile")).body(Matchers.containsString("support1"));
+        RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/user/tam-users/" + tamUser.id).then()
+                .statusCode(200).body(Matchers.containsString("Profile")).body(Matchers.containsString("tam"));
 
         RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/user/tickets/" + ticketId + "/edit").then()
                 .statusCode(200).body(Matchers.containsString("In Progress")).body(Matchers.containsString("Resolved"))
@@ -189,7 +206,8 @@ class UserAccessTest {
         RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/user/tickets").then().statusCode(200)
                 .body(Matchers.containsString("Tickets")).body(Matchers.containsString("Open tickets"))
                 .body(Matchers.containsString("Closed tickets")).body(Matchers.containsString("Create"))
-                .body(Matchers.containsString("Open"));
+                .body(Matchers.containsString("Open")).body(Matchers.containsString("/user/support-users/"))
+                .body(Matchers.containsString("support1"));
 
         RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/user/tickets/open").then().statusCode(200)
                 .body(Matchers.containsString("Open tickets")).body(Matchers.containsString("Create"));
@@ -198,11 +216,21 @@ class UserAccessTest {
                 .body(Matchers.containsString("Closed tickets")).body(Matchers.containsString("Create"));
 
         Long ticketId = tamTicket == null ? null : tamTicket.id;
+        User supportUser = User.find("email", "support1@mnemosyne-systems.ai").firstResult();
         RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/user/tickets/" + ticketId).then()
                 .statusCode(200).body(Matchers.containsString(tamTicketName)).body(Matchers.containsString("Ticket"))
                 .body(Matchers.containsString("Support users")).body(Matchers.containsString("Company"))
                 .body(Matchers.containsString("Entitlement")).body(Matchers.containsString("Service Level"))
-                .body(Matchers.containsString("tam@mnemosyne-systems.ai")).body(Matchers.containsString("Reply"))
+                .body(Matchers.containsString("/user/support-users/")).body(Matchers.containsString("support1"))
+                .body(Matchers.containsString("/user/tam-users/")).body(Matchers.containsString("tam"))
+                .body(Matchers.containsString("Reply")).body(Matchers.not(Matchers.containsString("Back")));
+
+        RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/tickets/" + ticketId).then().statusCode(200)
+                .body(Matchers.containsString(tamTicketName)).body(Matchers.containsString("Support users"))
+                .body(Matchers.containsString("value=\"Assigned\""));
+
+        RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/user/support-users/" + supportUser.id).then()
+                .statusCode(200).body(Matchers.containsString("Profile")).body(Matchers.containsString("support1"))
                 .body(Matchers.not(Matchers.containsString("Back")));
     }
 

@@ -69,6 +69,15 @@ public class SupportResource {
     @Location("support/ticket-detail.html")
     Template ticketDetailTemplate;
 
+    @Location("support/support-user-view.html")
+    Template supportUserViewTemplate;
+
+    @Location("support/tam-user-view.html")
+    Template tamUserViewTemplate;
+
+    @Location("support/user-profile-view.html")
+    Template userProfileViewTemplate;
+
     @Location("support/users.html")
     Template supportUsersTemplate;
 
@@ -83,6 +92,8 @@ public class SupportResource {
                 .data("assignedCount", data.assignedTickets.size()).data("openCount", data.openTickets.size())
                 .data("messageDates", data.messageDates).data("messageDateLabels", data.messageDateLabels)
                 .data("slaColors", data.slaColors).data("supportAssignments", data.supportAssignments)
+                .data("supportAssignmentNames", data.supportAssignmentNames)
+                .data("supportAssignmentIds", data.supportAssignmentIds)
                 .data("assignedTicketIds", data.assignedTicketIds).data("ticketsBase", "/support")
                 .data("createTicketUrl", "/support/tickets/create").data("showSupportUsers", true)
                 .data("currentUser", user);
@@ -97,6 +108,8 @@ public class SupportResource {
                 .data("assignedCount", data.assignedTickets.size()).data("openCount", data.openTickets.size())
                 .data("messageDates", data.messageDates).data("messageDateLabels", data.messageDateLabels)
                 .data("slaColors", data.slaColors).data("supportAssignments", data.supportAssignments)
+                .data("supportAssignmentNames", data.supportAssignmentNames)
+                .data("supportAssignmentIds", data.supportAssignmentIds)
                 .data("assignedTicketIds", data.assignedTicketIds).data("ticketsBase", "/support")
                 .data("createTicketUrl", "/support/tickets/create").data("showSupportUsers", true)
                 .data("currentUser", user);
@@ -111,9 +124,55 @@ public class SupportResource {
                 .data("assignedCount", data.assignedTickets.size()).data("openCount", data.openTickets.size())
                 .data("messageDates", data.messageDates).data("messageDateLabels", data.messageDateLabels)
                 .data("slaColors", data.slaColors).data("supportAssignments", data.supportAssignments)
+                .data("supportAssignmentNames", data.supportAssignmentNames)
+                .data("supportAssignmentIds", data.supportAssignmentIds)
                 .data("assignedTicketIds", data.assignedTicketIds).data("ticketsBase", "/support")
                 .data("createTicketUrl", "/support/tickets/create").data("showSupportUsers", true)
                 .data("currentUser", user);
+    }
+
+    @GET
+    @Path("/support-users/{id}")
+    public TemplateInstance viewSupportUser(@CookieParam(AuthHelper.AUTH_COOKIE) String auth,
+            @PathParam("id") Long id) {
+        User currentUser = requireSupport(auth);
+        User supportUser = User.findById(id);
+        if (supportUser == null || !User.TYPE_SUPPORT.equalsIgnoreCase(supportUser.type)) {
+            throw new NotFoundException();
+        }
+        SupportTicketCounts counts = loadTicketCounts(currentUser);
+        return supportUserViewTemplate.data("supportUser", supportUser).data("assignedCount", counts.assignedCount)
+                .data("openCount", counts.openCount).data("ticketsBase", "/support").data("showSupportUsers", true)
+                .data("currentUser", currentUser);
+    }
+
+    @GET
+    @Path("/tam-users/{id}")
+    public TemplateInstance viewTamUser(@CookieParam(AuthHelper.AUTH_COOKIE) String auth, @PathParam("id") Long id) {
+        User currentUser = requireSupport(auth);
+        User tamUser = User.findById(id);
+        if (tamUser == null || !User.TYPE_TAM.equalsIgnoreCase(tamUser.type)) {
+            throw new NotFoundException();
+        }
+        SupportTicketCounts counts = loadTicketCounts(currentUser);
+        return tamUserViewTemplate.data("tamUser", tamUser).data("assignedCount", counts.assignedCount)
+                .data("openCount", counts.openCount).data("ticketsBase", "/support").data("showSupportUsers", true)
+                .data("currentUser", currentUser);
+    }
+
+    @GET
+    @Path("/user-profiles/{id}")
+    public TemplateInstance viewUserProfile(@CookieParam(AuthHelper.AUTH_COOKIE) String auth,
+            @PathParam("id") Long id) {
+        User currentUser = requireSupport(auth);
+        User viewedUser = User.findById(id);
+        if (viewedUser == null) {
+            throw new NotFoundException();
+        }
+        SupportTicketCounts counts = loadTicketCounts(currentUser);
+        return userProfileViewTemplate.data("viewedUser", viewedUser).data("assignedCount", counts.assignedCount)
+                .data("openCount", counts.openCount).data("ticketsBase", "/support").data("showSupportUsers", true)
+                .data("currentUser", currentUser);
     }
 
     @GET
@@ -294,9 +353,21 @@ public class SupportResource {
         }
         java.util.List<Message> messages = loadMessages(ticket);
         java.util.Map<Long, String> messageLabels = new java.util.LinkedHashMap<>();
+        java.util.Map<Long, String> messageAuthorNames = new java.util.LinkedHashMap<>();
+        java.util.Map<Long, String> messageAuthorLinks = new java.util.LinkedHashMap<>();
         for (Message message : messages) {
             if (message.date != null) {
                 messageLabels.put(message.id, formatDate(message.date));
+            }
+            if (message.author != null && message.author.id != null) {
+                messageAuthorNames.put(message.id, message.author.name);
+                if (User.TYPE_SUPPORT.equalsIgnoreCase(message.author.type)) {
+                    messageAuthorLinks.put(message.id, "/support/support-users/" + message.author.id);
+                } else if (User.TYPE_TAM.equalsIgnoreCase(message.author.type)) {
+                    messageAuthorLinks.put(message.id, "/support/tam-users/" + message.author.id);
+                } else {
+                    messageAuthorLinks.put(message.id, "/support/user-profiles/" + message.author.id);
+                }
             }
         }
         java.util.List<CompanyEntitlement> entitlements = CompanyEntitlement.find(
@@ -304,11 +375,14 @@ public class SupportResource {
                 ticket.company).list();
         return ticketDetailTemplate.data("ticket", ticket).data("displayStatus", displayStatus)
                 .data("supportUsers", supportUsers).data("tamUsers", tamUsers).data("messages", messages)
-                .data("messageLabels", messageLabels).data("companies", Company.listAll())
+                .data("messageLabels", messageLabels).data("messageAuthorNames", messageAuthorNames)
+                .data("messageAuthorLinks", messageAuthorLinks).data("companies", Company.listAll())
                 .data("companyEntitlements", entitlements)
                 .data("selectedCompanyEntitlementId",
                         ticket.companyEntitlement == null ? null : ticket.companyEntitlement.id)
-                .data("action", "/support/tickets/" + id).data("title", "Update")
+                .data("action", "/support/tickets/" + id).data("title", "Update").data("editableStatus", true)
+                .data("supportUserBase", "/support/support-users").data("tamUserBase", "/support/tam-users")
+                .data("messageAction", "/support/tickets/" + id + "/messages")
                 .data("assignedCount", counts.assignedCount).data("openCount", counts.openCount)
                 .data("ticketsBase", "/support").data("showSupportUsers", true).data("currentUser", user);
     }
@@ -345,7 +419,7 @@ public class SupportResource {
         message.author = user;
         AttachmentHelper.attachToMessage(message, AttachmentHelper.readAttachments(input, "attachments"));
         message.persist();
-        return Response.seeOther(URI.create("/support/tickets/" + id)).build();
+        return Response.seeOther(URI.create("/tickets/" + id)).build();
     }
 
     @POST
@@ -440,7 +514,7 @@ public class SupportResource {
             }
         }
         assignCompanyTams(ticket);
-        return Response.seeOther(URI.create("/support/tickets/" + id)).build();
+        return Response.seeOther(URI.create("/tickets/" + id)).build();
     }
 
     @POST
@@ -460,7 +534,7 @@ public class SupportResource {
             ticket.status = "Assigned";
         }
         assignCompanyTams(ticket);
-        return Response.seeOther(URI.create("/support/tickets/" + id)).build();
+        return Response.seeOther(URI.create("/tickets/" + id)).build();
     }
 
     private void assignCompanyTams(Ticket ticket) {
@@ -619,12 +693,16 @@ public class SupportResource {
             }
         }
         Map<Long, String> supportAssignments = new LinkedHashMap<>();
+        Map<Long, String> supportAssignmentNames = new LinkedHashMap<>();
+        Map<Long, Long> supportAssignmentIds = new LinkedHashMap<>();
         for (Ticket ticket : tickets) {
             User assignedSupport = User
                     .find("select u from Ticket t join t.supportUsers u where t = ?1 order by u.id desc", ticket)
                     .firstResult();
             if (assignedSupport != null) {
                 supportAssignments.put(ticket.id, assignedSupport.email);
+                supportAssignmentNames.put(ticket.id, assignedSupport.name);
+                supportAssignmentIds.put(ticket.id, assignedSupport.id);
             }
         }
         Set<Long> assignedTicketIds = new HashSet<>();
@@ -668,6 +746,8 @@ public class SupportResource {
         data.messageDateLabels = messageDateLabels;
         data.slaColors = slaColors;
         data.supportAssignments = supportAssignments;
+        data.supportAssignmentNames = supportAssignmentNames;
+        data.supportAssignmentIds = supportAssignmentIds;
         data.assignedTicketIds = assignedTicketIds;
         return data;
     }
@@ -735,6 +815,8 @@ public class SupportResource {
         private Map<Long, String> messageDateLabels;
         private Map<Long, String> slaColors;
         private Map<Long, String> supportAssignments;
+        private Map<Long, String> supportAssignmentNames;
+        private Map<Long, Long> supportAssignmentIds;
         private Set<Long> assignedTicketIds;
     }
 

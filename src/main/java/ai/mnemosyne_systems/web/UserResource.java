@@ -61,7 +61,7 @@ public class UserResource {
     @Location("user/ticket-detail.html")
     Template ticketDetailTemplate;
 
-    @Location("user/tam-ticket-detail.html")
+    @Location("support/ticket-detail.html")
     Template tamTicketDetailTemplate;
 
     @Location("user/ticket-edit.html")
@@ -81,6 +81,15 @@ public class UserResource {
 
     @Location("support/user-form.html")
     Template supportUserFormTemplate;
+
+    @Location("support/support-user-view.html")
+    Template supportUserViewTemplate;
+
+    @Location("support/tam-user-view.html")
+    Template tamUserViewTemplate;
+
+    @Location("support/user-profile-view.html")
+    Template userProfileViewTemplate;
 
     @GET
     @Path("user")
@@ -304,6 +313,57 @@ public class UserResource {
     }
 
     @GET
+    @Path("user/support-users/{id}")
+    public TemplateInstance viewSupportUser(@CookieParam(AuthHelper.AUTH_COOKIE) String auth,
+            @PathParam("id") Long id) {
+        User user = requireUser(auth);
+        User supportUser = User.findById(id);
+        if (supportUser == null || !User.TYPE_SUPPORT.equalsIgnoreCase(supportUser.type)) {
+            throw new NotFoundException();
+        }
+        SupportTicketData data = buildTicketDataForUser(user);
+        return supportUserViewTemplate.data("supportUser", supportUser)
+                .data("assignedCount", data.assignedTickets.size()).data("openCount", data.openTickets.size())
+                .data("ticketsBase", "/user/tickets")
+                .data("showSupportUsers", User.TYPE_TAM.equalsIgnoreCase(user.type))
+                .data("usersBase", User.TYPE_TAM.equalsIgnoreCase(user.type) ? "/tam/users" : "/user/users")
+                .data("currentUser", user);
+    }
+
+    @GET
+    @Path("user/tam-users/{id}")
+    public TemplateInstance viewTamUser(@CookieParam(AuthHelper.AUTH_COOKIE) String auth, @PathParam("id") Long id) {
+        User user = requireUser(auth);
+        User tamUser = User.findById(id);
+        if (tamUser == null || !User.TYPE_TAM.equalsIgnoreCase(tamUser.type)) {
+            throw new NotFoundException();
+        }
+        SupportTicketData data = buildTicketDataForUser(user);
+        return tamUserViewTemplate.data("tamUser", tamUser).data("assignedCount", data.assignedTickets.size())
+                .data("openCount", data.openTickets.size()).data("ticketsBase", "/user/tickets")
+                .data("showSupportUsers", User.TYPE_TAM.equalsIgnoreCase(user.type))
+                .data("usersBase", User.TYPE_TAM.equalsIgnoreCase(user.type) ? "/tam/users" : "/user/users")
+                .data("currentUser", user);
+    }
+
+    @GET
+    @Path("user/user-profiles/{id}")
+    public TemplateInstance viewUserProfile(@CookieParam(AuthHelper.AUTH_COOKIE) String auth,
+            @PathParam("id") Long id) {
+        User user = requireUser(auth);
+        User viewedUser = User.findById(id);
+        if (viewedUser == null) {
+            throw new NotFoundException();
+        }
+        SupportTicketData data = buildTicketDataForUser(user);
+        return userProfileViewTemplate.data("viewedUser", viewedUser).data("assignedCount", data.assignedTickets.size())
+                .data("openCount", data.openTickets.size()).data("ticketsBase", "/user/tickets")
+                .data("showSupportUsers", User.TYPE_TAM.equalsIgnoreCase(user.type))
+                .data("usersBase", User.TYPE_TAM.equalsIgnoreCase(user.type) ? "/tam/users" : "/user/users")
+                .data("currentUser", user);
+    }
+
+    @GET
     @Path("user/tickets/open")
     public Response tamOpenTickets(@CookieParam(AuthHelper.AUTH_COOKIE) String auth) {
         User user = requireUser(auth);
@@ -312,7 +372,9 @@ public class UserResource {
                 .data("assignedCount", data.assignedTickets.size()).data("openCount", data.openTickets.size())
                 .data("messageDates", data.messageDates).data("messageDateLabels", data.messageDateLabels)
                 .data("slaColors", data.slaColors).data("supportAssignments", data.supportAssignments)
-                .data("createTicketUrl", "/user/tickets/create").data("ticketsBase", "/user/tickets")
+                .data("supportAssignmentNames", data.supportAssignmentNames)
+                .data("supportAssignmentIds", data.supportAssignmentIds).data("createTicketUrl", "/user/tickets/create")
+                .data("ticketsBase", "/user/tickets")
                 .data("showSupportUsers", User.TYPE_TAM.equalsIgnoreCase(user.type))
                 .data("usersBase", User.TYPE_TAM.equalsIgnoreCase(user.type) ? "/tam/users" : "/user/users")
                 .data("currentUser", user)).build();
@@ -327,7 +389,9 @@ public class UserResource {
                 .data("assignedCount", data.assignedTickets.size()).data("openCount", data.openTickets.size())
                 .data("messageDates", data.messageDates).data("messageDateLabels", data.messageDateLabels)
                 .data("slaColors", data.slaColors).data("supportAssignments", data.supportAssignments)
-                .data("createTicketUrl", "/user/tickets/create").data("ticketsBase", "/user/tickets")
+                .data("supportAssignmentNames", data.supportAssignmentNames)
+                .data("supportAssignmentIds", data.supportAssignmentIds).data("createTicketUrl", "/user/tickets/create")
+                .data("ticketsBase", "/user/tickets")
                 .data("showSupportUsers", User.TYPE_TAM.equalsIgnoreCase(user.type))
                 .data("usersBase", User.TYPE_TAM.equalsIgnoreCase(user.type) ? "/tam/users" : "/user/users")
                 .data("currentUser", user)).build();
@@ -337,20 +401,43 @@ public class UserResource {
     @Path("user/tickets/{id}")
     public TemplateInstance ticketDetail(@CookieParam(AuthHelper.AUTH_COOKIE) String auth, @PathParam("id") Long id) {
         User user = requireUser(auth);
+        return renderUserTicketDetail(user, id);
+    }
+
+    private TemplateInstance renderUserTicketDetail(User user, Long id) {
         Ticket ticket = findTicketForUser(user, id);
         if (ticket == null) {
             throw new NotFoundException();
         }
         java.util.List<ai.mnemosyne_systems.model.Message> messages = loadMessages(ticket);
         java.util.Map<Long, String> messageLabels = new java.util.LinkedHashMap<>();
+        java.util.Map<Long, String> messageAuthorNames = new java.util.LinkedHashMap<>();
+        java.util.Map<Long, String> messageAuthorLinks = new java.util.LinkedHashMap<>();
         for (ai.mnemosyne_systems.model.Message message : messages) {
             if (message.date != null) {
                 messageLabels.put(message.id, formatDate(message.date));
+            }
+            if (message.author != null && message.author.id != null) {
+                messageAuthorNames.put(message.id, message.author.name);
+                if (User.TYPE_SUPPORT.equalsIgnoreCase(message.author.type)) {
+                    messageAuthorLinks.put(message.id, "/user/support-users/" + message.author.id);
+                } else if (User.TYPE_TAM.equalsIgnoreCase(message.author.type)) {
+                    messageAuthorLinks.put(message.id, "/user/tam-users/" + message.author.id);
+                } else {
+                    messageAuthorLinks.put(message.id, "/user/user-profiles/" + message.author.id);
+                }
             }
         }
         SupportTicketData data = buildTicketDataForUser(user);
         java.util.List<User> supportUsers = User
                 .find("select u from Ticket t join t.supportUsers u where t = ?1 order by u.email", ticket).list();
+        String displayStatus = ticket.status;
+        if (displayStatus == null || displayStatus.isBlank()) {
+            displayStatus = "Open";
+        }
+        if ("Open".equalsIgnoreCase(displayStatus) && !supportUsers.isEmpty()) {
+            displayStatus = "Assigned";
+        }
         java.util.List<User> tamUsers = ticket.company == null ? new java.util.ArrayList<>() : User.find(
                 "select distinct u from Company c join c.users u where c = ?1 and lower(u.type) = ?2 order by u.email",
                 ticket.company, User.TYPE_TAM).list();
@@ -369,8 +456,12 @@ public class UserResource {
                 }
             }
         }
-        return tamTicketDetailTemplate.data("ticket", ticket).data("supportUsers", supportUsers)
-                .data("tamUsers", tamUsers).data("messages", messages).data("messageLabels", messageLabels)
+        return tamTicketDetailTemplate.data("ticket", ticket).data("displayStatus", displayStatus)
+                .data("supportUsers", supportUsers).data("tamUsers", tamUsers).data("messages", messages)
+                .data("messageLabels", messageLabels).data("messageAuthorNames", messageAuthorNames)
+                .data("messageAuthorLinks", messageAuthorLinks).data("action", "/user/tickets/" + id)
+                .data("editableStatus", false).data("supportUserBase", "/user/support-users")
+                .data("tamUserBase", "/user/tam-users").data("messageAction", "/user/tickets/" + id + "/messages")
                 .data("assignedCount", data.assignedTickets.size()).data("openCount", data.openTickets.size())
                 .data("ticketsBase", "/user/tickets")
                 .data("showSupportUsers", User.TYPE_TAM.equalsIgnoreCase(user.type))
@@ -410,7 +501,7 @@ public class UserResource {
         message.author = user;
         AttachmentHelper.attachToMessage(message, AttachmentHelper.readAttachments(input, "attachments"));
         message.persist();
-        return Response.seeOther(URI.create("/user/tickets/" + id)).build();
+        return Response.seeOther(URI.create("/tickets/" + id)).build();
     }
 
     @GET
@@ -440,7 +531,7 @@ public class UserResource {
             throw new BadRequestException("Status must be Assigned, In Progress, Resolved, or Closed");
         }
         ticket.status = normalized;
-        return Response.seeOther(URI.create("/user/tickets/" + id)).build();
+        return Response.seeOther(URI.create("/tickets/" + id)).build();
     }
 
     @GET
@@ -618,7 +709,9 @@ public class UserResource {
                 .data("assignedCount", data.assignedTickets.size()).data("openCount", data.openTickets.size())
                 .data("messageDates", data.messageDates).data("messageDateLabels", data.messageDateLabels)
                 .data("slaColors", data.slaColors).data("supportAssignments", data.supportAssignments)
-                .data("createTicketUrl", "/user/tickets/create").data("ticketsBase", "/user/tickets")
+                .data("supportAssignmentNames", data.supportAssignmentNames)
+                .data("supportAssignmentIds", data.supportAssignmentIds).data("createTicketUrl", "/user/tickets/create")
+                .data("ticketsBase", "/user/tickets")
                 .data("showSupportUsers", User.TYPE_TAM.equalsIgnoreCase(user.type))
                 .data("usersBase", User.TYPE_TAM.equalsIgnoreCase(user.type) ? "/tam/users" : "/user/users")
                 .data("currentUser", user);
@@ -681,12 +774,16 @@ public class UserResource {
             }
         }
         java.util.Map<Long, String> supportAssignments = new java.util.LinkedHashMap<>();
+        java.util.Map<Long, String> supportAssignmentNames = new java.util.LinkedHashMap<>();
+        java.util.Map<Long, Long> supportAssignmentIds = new java.util.LinkedHashMap<>();
         for (Ticket ticket : scopedTickets) {
             User assignedSupport = User
                     .find("select u from Ticket t join t.supportUsers u where t = ?1 order by u.id desc", ticket)
                     .firstResult();
             if (assignedSupport != null) {
                 supportAssignments.put(ticket.id, assignedSupport.email);
+                supportAssignmentNames.put(ticket.id, assignedSupport.name);
+                supportAssignmentIds.put(ticket.id, assignedSupport.id);
             }
         }
         java.util.List<Ticket> assignedTickets = new java.util.ArrayList<>();
@@ -719,6 +816,8 @@ public class UserResource {
         data.messageDateLabels = messageDateLabels;
         data.slaColors = slaColors;
         data.supportAssignments = supportAssignments;
+        data.supportAssignmentNames = supportAssignmentNames;
+        data.supportAssignmentIds = supportAssignmentIds;
         return data;
     }
 
@@ -822,6 +921,8 @@ public class UserResource {
         private Map<Long, String> messageDateLabels;
         private Map<Long, String> slaColors;
         private Map<Long, String> supportAssignments;
+        private Map<Long, String> supportAssignmentNames;
+        private Map<Long, Long> supportAssignmentIds;
     }
 
     private Ticket findTicketForUser(User user, Long id) {
