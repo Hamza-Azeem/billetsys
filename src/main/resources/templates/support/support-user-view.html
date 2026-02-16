@@ -24,18 +24,8 @@
     </div>
     <form>
         <div>
-            <label>Username
-                <input type="text" value="{supportUser.name}" readonly>
-            </label>
-        </div>
-        <div>
-            <label>Email
-                <input type="text" value="{supportUser.email}" readonly>
-            </label>
-        </div>
-        <div>
-            <label>Social
-                <input type="text" value="{supportUser.social}" readonly>
+            <label>Name
+                <a href="/support/users/{supportUser.id}">{supportUser.name}</a>
             </label>
         </div>
         <div>

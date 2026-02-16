@@ -208,6 +208,15 @@ public class SupportResource {
         if (selectedCompany == null && !companies.isEmpty()) {
             selectedCompany = companies.get(0);
         }
+        Map<Long, String> companyOptionLabels = new LinkedHashMap<>();
+        for (Company company : companies) {
+            if (company == null || company.id == null) {
+                continue;
+            }
+            String name = company.name == null ? "" : company.name.trim();
+            companyOptionLabels.put(company.id, name.toLowerCase(Locale.ENGLISH).startsWith("company ")
+                    ? name.substring("company ".length()).trim() : name);
+        }
         List<User> users = selectedCompany == null ? List.of() : Company
                 .find("select u from Company c join c.users u where c = ?1 order by u.name", selectedCompany).list();
         String createUserUrl = selectedCompany == null ? "/support/users"
@@ -215,10 +224,10 @@ public class SupportResource {
         return Response.ok(supportUsersTemplate.data("users", users).data("companies", companies)
                 .data("selectedCompanyId", selectedCompany == null ? null : selectedCompany.id)
                 .data("selectedCompany", selectedCompany).data("showCompanySelector", true)
-                .data("createUserUrl", createUserUrl).data("usersBase", "/support/users")
-                .data("assignedCount", counts.assignedCount).data("openCount", counts.openCount)
-                .data("ticketsBase", "/support").data("showSupportUsers", true).data("currentUser", currentUser))
-                .build();
+                .data("companyOptionLabels", companyOptionLabels).data("createUserUrl", createUserUrl)
+                .data("usersBase", "/support/users").data("assignedCount", counts.assignedCount)
+                .data("openCount", counts.openCount).data("ticketsBase", "/support").data("showSupportUsers", true)
+                .data("currentUser", currentUser)).build();
     }
 
     @GET

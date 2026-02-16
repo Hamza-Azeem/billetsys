@@ -32,6 +32,7 @@ import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -142,13 +143,14 @@ public class UserResource {
         java.util.List<User> users = selectedCompany == null ? java.util.List.of() : Company
                 .find("select u from Company c join c.users u where c = ?1 order by u.name", selectedCompany).list();
         String createUserUrl = selectedCompany == null ? "/tam/users" : "/tam/users/" + selectedCompany.id + "/create";
-        return Response.ok(supportUsersTemplate.data("users", users).data("companies", companies)
-                .data("selectedCompanyId", selectedCompany == null ? null : selectedCompany.id)
-                .data("selectedCompany", selectedCompany).data("showCompanySelector", false)
-                .data("createUserUrl", createUserUrl).data("usersBase", "/tam/users")
-                .data("companyLocked", companies.size() <= 1).data("assignedCount", data.assignedTickets.size())
-                .data("openCount", data.openTickets.size()).data("ticketsBase", "/user/tickets")
-                .data("showSupportUsers", true).data("currentUser", user)).build();
+        return Response
+                .ok(supportUsersTemplate.data("users", users).data("companies", companies)
+                        .data("selectedCompanyId", selectedCompany == null ? null : selectedCompany.id)
+                        .data("selectedCompany", selectedCompany).data("showCompanySelector", false)
+                        .data("createUserUrl", createUserUrl).data("usersBase", "/tam/users")
+                        .data("assignedCount", data.assignedTickets.size()).data("openCount", data.openTickets.size())
+                        .data("ticketsBase", "/user/tickets").data("showSupportUsers", true).data("currentUser", user))
+                .build();
     }
 
     @GET
@@ -543,14 +545,26 @@ public class UserResource {
 
     @GET
     @Path("users")
-    public TemplateInstance listAdminUsers(@CookieParam(AuthHelper.AUTH_COOKIE) String auth) {
+    public TemplateInstance listAdminUsers(@CookieParam(AuthHelper.AUTH_COOKIE) String auth,
+            @QueryParam("companyId") Long companyId) {
         User user = requireAdmin(auth);
-        List<User> users = User.listAll();
-        Map<Long, String> typeLabels = new HashMap<>();
-        for (User entry : users) {
-            typeLabels.put(entry.id, typeLabel(entry.type));
+        List<Company> companies = Company.list("order by name");
+        Company selectedCompany = null;
+        if (companyId != null) {
+            selectedCompany = Company.findById(companyId);
+            if (selectedCompany == null) {
+                throw new NotFoundException();
+            }
         }
-        return adminUsersTemplate.data("users", users).data("typeLabels", typeLabels).data("currentUser", user);
+        if (selectedCompany == null && !companies.isEmpty()) {
+            selectedCompany = companies.get(0);
+        }
+        List<User> users = selectedCompany == null ? List.of() : Company
+                .find("select u from Company c join c.users u where c = ?1 order by u.name", selectedCompany).list();
+        return adminUsersTemplate.data("users", users).data("companies", companies)
+                .data("selectedCompanyId", selectedCompany == null ? null : selectedCompany.id)
+                .data("showCompanySelector", true).data("companyLocked", false).data("createUserUrl", "/users/create")
+                .data("currentUser", user);
     }
 
     @GET

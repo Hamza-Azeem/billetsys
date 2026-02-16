@@ -10,27 +10,46 @@
 {#content}
 <div class="support-header">
     <h1>Users</h1>
-    <a class="action-button" href="/users/create">Create</a>
+    <a class="action-button" href="{#if createUserUrl??}{createUserUrl}{#else}/users/create{/if}">Create</a>
 </div>
+{#if showCompanySelector}
+<div style="margin-bottom: 16px;">
+    {#if companyLocked?? && companyLocked}
+    <input type="text" aria-label="Company" value="{#for company in companies}{#if selectedCompanyId == company.id}{company.name}{/if}{/for}" readonly>
+    {#else}
+    <select name="companyId" aria-label="Company" onchange="window.location = '/users?companyId=' + this.value">
+        {#for company in companies}
+        <option value="{company.id}" {#if selectedCompanyId == company.id}selected{/if}>{company.name}</option>
+        {/for}
+    </select>
+    {/if}
+</div>
+{/if}
+{#if selectedCompanyId??}
 <table>
     <thead>
     <tr>
         <th>Name <button class="sort-button" type="button" onclick="sortTable(this, 0)">↕</button></th>
-        <th>Email <button class="sort-button" type="button" onclick="sortTable(this, 1)">↕</button></th>
-        <th>Social <button class="sort-button" type="button" onclick="sortTable(this, 2)">↕</button></th>
-        <th>Type <button class="sort-button" type="button" onclick="sortTable(this, 3)">↕</button></th>
+        <th>Full Name <button class="sort-button" type="button" onclick="sortTable(this, 1)">↕</button></th>
+        <th>Type <button class="sort-button" type="button" onclick="sortTable(this, 2)">↕</button></th>
     </tr>
     </thead>
     <tbody>
+    {#if users.isEmpty}
+    <tr>
+        <td colspan="3">No users found.</td>
+    </tr>
+    {#else}
     {#for user in users}
     <tr>
         <td><a href="/users/{user.id}">{user.name}</a></td>
-        <td><a href="mailto:{user.email}">{user.email}</a></td>
-        <td>{user.social ?: ''}</td>
-        <td>{typeLabels.get(user.id)}</td>
+        <td>{user.fullName ?: ''}</td>
+        <td>{user.type}</td>
     </tr>
     {/for}
+    {/if}
     </tbody>
 </table>
+{/if}
 {/content}
 {/include}

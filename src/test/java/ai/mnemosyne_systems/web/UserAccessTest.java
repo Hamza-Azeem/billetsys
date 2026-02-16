@@ -458,8 +458,7 @@ class UserAccessTest {
         String tamCookie = login("tam2", "tam2");
 
         RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, tamCookie).get("/tam/users/" + tamCompanyId).then()
-                .statusCode(200).body(Matchers.containsString("Users"))
-                .body(Matchers.containsString("tam2@mnemosyne-systems.ai"));
+                .statusCode(200).body(Matchers.containsString("Users")).body(Matchers.containsString("tam2"));
 
         RestAssured.given().redirects().follow(false).cookie(AuthHelper.AUTH_COOKIE, tamCookie)
                 .contentType(ContentType.URLENC).formParam("name", "TAM User")
