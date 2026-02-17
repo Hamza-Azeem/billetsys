@@ -11,6 +11,8 @@
 <head>
     <meta charset="UTF-8">
     <title>Admin - Ticket System</title>
+    <link rel="stylesheet" href="/webjars/highlightjs/11.11.1/styles/github.min.css">
+    <script src="/webjars/highlightjs/11.11.1/highlight.min.js"></script>
     <style>
         :root {
             --header-bg: #b00020;
@@ -184,6 +186,9 @@
             padding: 24px;
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
         }
+        .form-card.full-width {
+            max-width: none;
+        }
         .form-actions {
             display: flex;
             justify-content: flex-end;
@@ -240,6 +245,79 @@
         .icon-link:hover,
         .icon-button:hover {
             border-color: var(--card-border);
+        }
+        .markdown-editor {
+            border: 1px solid var(--card-border);
+            border-radius: 6px;
+            background: var(--card-bg);
+            overflow: hidden;
+        }
+        .markdown-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 8px;
+            background: #f6f6f6;
+            border-bottom: 1px solid var(--card-border);
+        }
+        .markdown-toolbar button,
+        .markdown-toolbar select {
+            border: 1px solid var(--card-border);
+            background: #ffffff;
+            border-radius: 4px;
+            padding: 2px 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 12px;
+            line-height: 1.2;
+        }
+        .markdown-panels {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .markdown-panel {
+            display: flex;
+            flex-direction: column;
+            min-height: 160px;
+        }
+        .markdown-panel + .markdown-panel {
+            border-left: 1px solid var(--card-border);
+        }
+        .markdown-panel-header {
+            padding: 6px 8px;
+            font-weight: 600;
+            background: #fafafa;
+            border-bottom: 1px solid var(--card-border);
+        }
+        .markdown-editor textarea {
+            border: none;
+            padding: 8px;
+            min-height: 140px;
+            font-family: inherit;
+            font-size: 14px;
+            resize: vertical;
+        }
+        .markdown-preview {
+            padding: 8px;
+            min-height: 140px;
+            overflow: auto;
+        }
+        .markdown-preview code {
+            background: #f2f2f2;
+            padding: 2px 4px;
+            border-radius: 4px;
+        }
+        .markdown-preview pre {
+            background: #f2f2f2;
+            padding: 6px;
+            border-radius: 4px;
+            overflow: auto;
+        }
+        .markdown-preview blockquote {
+            margin: 0;
+            padding-left: 12px;
+            border-left: 3px solid var(--card-border);
+            color: #555;
         }
         .session-warning {
             position: fixed;
@@ -426,9 +504,240 @@
         }, 1000);
     }
 
+    function escapeMarkdownHtml(value) {
+        return value.replace(/[&<>"]/g, (char) => {
+            switch (char) {
+                case '&':
+                    return '&amp;';
+                case '<':
+                    return '&lt;';
+                case '>':
+                    return '&gt;';
+                case '"':
+                    return '&quot;';
+                default:
+                    return char;
+            }
+        });
+    }
+
+    function renderMarkdownInline(text) {
+        let result = escapeMarkdownHtml(text);
+        result = result.replace(/`([^`]+)`/g, '<code>$1</code>');
+        result = result.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        result = result.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+        result = result.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+        result = result.replace(/_([^_]+)_/g, '<em>$1</em>');
+        result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g,
+            '<a href="$2" target="_blank" rel="noopener">$1</a>');
+        return result;
+    }
+
+    function renderMarkdown(text) {
+        if (!text) {
+            return '';
+        }
+        const lines = text.replace(/\r\n/g, '\n').split('\n');
+        let html = '';
+        let inList = false;
+        let inCodeBlock = false;
+        let codeBuffer = [];
+        let codeLanguage = '';
+        lines.forEach(line => {
+            if (line.trim().startsWith('```')) {
+                if (inCodeBlock) {
+                    const className = codeLanguage ? ' class="language-' + codeLanguage + '"' : '';
+                    html += '<pre><code' + className + '>' + escapeMarkdownHtml(codeBuffer.join('\n'))
+                        + '</code></pre>';
+                    inCodeBlock = false;
+                    codeBuffer = [];
+                    codeLanguage = '';
+                } else {
+                    if (inList) {
+                        html += '</ul>';
+                        inList = false;
+                    }
+                    inCodeBlock = true;
+                    const language = line.trim().substring(3).trim().toLowerCase();
+                    codeLanguage = /^[a-z0-9_+-]+$/.test(language) ? language : '';
+                }
+                return;
+            }
+            if (inCodeBlock) {
+                codeBuffer.push(line);
+                return;
+            }
+            if (/^\s*-\s+/.test(line)) {
+                if (!inList) {
+                    html += '<ul>';
+                    inList = true;
+                }
+                html += '<li>' + renderMarkdownInline(line.replace(/^\s*-\s+/, '')) + '</li>';
+                return;
+            }
+            if (inList) {
+                html += '</ul>';
+                inList = false;
+            }
+            if (line.startsWith('#')) {
+                const match = line.match(/^#+/);
+                const level = match ? Math.min(match[0].length, 6) : 0;
+                const rest = line.substring(level);
+                if (level > 0 && rest.startsWith(' ')) {
+                    html += '<h' + level + '>' + renderMarkdownInline(rest.trim()) + '</h' + level + '>';
+                    return;
+                }
+            }
+            if (/^>\s+/.test(line)) {
+                html += '<blockquote>' + renderMarkdownInline(line.replace(/^>\s+/, '')) + '</blockquote>';
+                return;
+            }
+            if (!line.trim()) {
+                html += '<br>';
+                return;
+            }
+            html += '<p>' + renderMarkdownInline(line) + '</p>';
+        });
+        if (inCodeBlock) {
+            const className = codeLanguage ? ' class="language-' + codeLanguage + '"' : '';
+            html += '<pre><code' + className + '>' + escapeMarkdownHtml(codeBuffer.join('\n')) + '</code></pre>';
+        }
+        if (inList) {
+            html += '</ul>';
+        }
+        return html;
+    }
+
+    function applyMarkdownAction(input, action, option) {
+        const start = input.selectionStart || 0;
+        const end = input.selectionEnd || 0;
+        const selected = input.value.substring(start, end);
+        const replaceRange = (replacement, selectionStart, selectionEnd) => {
+            input.value = input.value.substring(0, start) + replacement + input.value.substring(end);
+            input.focus();
+            if (selectionStart != null && selectionEnd != null) {
+                input.setSelectionRange(selectionStart, selectionEnd);
+            }
+        };
+        const wrap = (left, right, placeholder) => {
+            const value = selected || placeholder;
+            const replacement = left + value + right;
+            replaceRange(replacement, start + left.length, start + left.length + value.length);
+        };
+        const prefixLines = (prefix, placeholder) => {
+            const value = selected || placeholder;
+            const lines = value.split('\n');
+            const replacement = lines.map(line => prefix + line).join('\n');
+            replaceRange(replacement, start, start + replacement.length);
+        };
+        switch (action) {
+            case 'bold':
+                wrap('**', '**', 'bold text');
+                break;
+            case 'italic':
+                wrap('*', '*', 'italic text');
+                break;
+            case 'heading':
+                prefixLines('# ', 'Heading');
+                break;
+            case 'list':
+                prefixLines('- ', 'List item');
+                break;
+            case 'quote':
+                prefixLines('> ', 'Quote');
+                break;
+            case 'code':
+                wrap('`', '`', 'code');
+                break;
+            case 'code-block': {
+                const value = selected || 'code';
+                const language = option || '';
+                const fence = language ? '```' + language : '```';
+                const replacement = fence + '\n' + value + '\n```';
+                replaceRange(replacement, start + fence.length + 1, start + fence.length + 1 + value.length);
+                break;
+            }
+            case 'link': {
+                const linkText = selected || 'link text';
+                const replacement = '[' + linkText + '](url)';
+                replaceRange(replacement, start + linkText.length + 3, start + linkText.length + 6);
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    function highlightCodeBlocks(root) {
+        if (typeof hljs === 'undefined') {
+            return;
+        }
+        root.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
+    }
+
+    function setupMarkdownEditors() {
+        const editors = document.querySelectorAll('[data-markdown-editor]');
+        editors.forEach(editor => {
+            const input = editor.querySelector('[data-md-input]');
+            const preview = editor.querySelector('[data-md-preview]');
+            const toolbar = editor.querySelector('[data-md-toolbar]');
+            if (!input || !preview) {
+                return;
+            }
+            const render = () => {
+                preview.innerHTML = renderMarkdown(input.value);
+                highlightCodeBlocks(preview);
+            };
+            input.addEventListener('input', render);
+            render();
+            if (!toolbar) {
+                return;
+            }
+            const codeBlockButton = toolbar.querySelector('[data-md-action="code-block"]');
+            if (codeBlockButton) {
+                const select = document.createElement('select');
+                select.setAttribute('aria-label', 'Code language');
+                select.setAttribute('data-md-code-language', 'true');
+                select.innerHTML = '<option value="__label">Code</option>'
+                    + '<option value="">Plaintext</option>'
+                    + '<option value="sql">SQL</option>'
+                    + '<option value="c">C</option>'
+                    + '<option value="cpp">C++</option>'
+                    + '<option value="go">Go</option>'
+                    + '<option value="java">Java</option>'
+                    + '<option value="javascript">JavaScript</option>'
+                    + '<option value="python">Python</option>'
+                    + '<option value="rust">Rust</option>';
+                codeBlockButton.replaceWith(select);
+            }
+            toolbar.addEventListener('click', event => {
+                const button = event.target.closest('[data-md-action]');
+                if (!button) {
+                    return;
+                }
+                event.preventDefault();
+                applyMarkdownAction(input, button.getAttribute('data-md-action'));
+                render();
+            });
+            toolbar.addEventListener('change', event => {
+                const select = event.target.closest('[data-md-code-language]');
+                if (!select) {
+                    return;
+                }
+                if (select.value === '__label') {
+                    return;
+                }
+                applyMarkdownAction(input, 'code-block', select.value);
+                select.value = '__label';
+                render();
+            });
+        });
+    }
+
     updateHeaderClock();
     setInterval(updateHeaderClock, 1000);
     setupSessionTimeout();
+    setupMarkdownEditors();
     </script>
 </body>
 </html>

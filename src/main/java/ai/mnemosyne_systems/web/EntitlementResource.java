@@ -29,6 +29,9 @@ import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.net.URI;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 @Path("/entitlements")
 @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
@@ -45,7 +48,15 @@ public class EntitlementResource {
     @GET
     public TemplateInstance listEntitlements(@CookieParam(AuthHelper.AUTH_COOKIE) String auth) {
         User user = requireAdmin(auth);
-        return entitlementsTemplate.data("entitlements", Entitlement.listAll()).data("currentUser", user);
+        List<Entitlement> entitlements = Entitlement.listAll();
+        Map<Long, String> descriptionPreviews = new LinkedHashMap<>();
+        for (Entitlement entitlement : entitlements) {
+            if (entitlement.id != null) {
+                descriptionPreviews.put(entitlement.id, firstLinePlainText(entitlement.description));
+            }
+        }
+        return entitlementsTemplate.data("entitlements", entitlements).data("descriptionPreviews", descriptionPreviews)
+                .data("currentUser", user);
     }
 
     @GET
@@ -120,6 +131,19 @@ public class EntitlementResource {
         if (description == null || description.isBlank()) {
             throw new BadRequestException("Description is required");
         }
+    }
+
+    private String firstLinePlainText(String description) {
+        if (description == null || description.isBlank()) {
+            return "";
+        }
+        String firstLine = description.replace("\r\n", "\n").split("\n", 2)[0].trim();
+        firstLine = firstLine.replaceAll("\\[([^\\]]+)]\\(([^)]+)\\)", "$1");
+        firstLine = firstLine.replaceAll("^```[a-zA-Z0-9_+\\-]*\\s*", "");
+        firstLine = firstLine.replace("```", "");
+        firstLine = firstLine.replaceAll("^[>#*\\-\\s]+", "");
+        firstLine = firstLine.replace("**", "").replace("__", "").replace("`", "").replace("*", "").replace("_", "");
+        return firstLine.replaceAll("\\s+", " ").trim();
     }
 
     private User requireAdmin(String auth) {
