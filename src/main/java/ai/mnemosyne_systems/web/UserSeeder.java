@@ -169,11 +169,13 @@ public class UserSeeder {
         addUserIfMissing(company, tam);
         addUserIfMissing(company, primaryContact);
 
-        CompanyEntitlement enterpriseHigh = ensureCompanyEntitlement(company, "Enterprise", "High");
-        Ticket a1 = seedTicket(Ticket.formatName(company, 1), company, user1, enterpriseHigh);
-        Ticket a2 = seedTicket(Ticket.formatName(company, 2), company, user2, enterpriseHigh);
-        Ticket a3 = seedTicket(Ticket.formatName(company, 3), company, user1, enterpriseHigh);
-        Ticket a4 = seedTicket(Ticket.formatName(company, 4), company, user2, enterpriseHigh);
+        ensureCompanyEntitlement(company, "Enterprise", "Eslacate");
+        ensureCompanyEntitlement(company, "Enterprise", "Normal");
+        CompanyEntitlement enterpriseCritical = ensureCompanyEntitlement(company, "Enterprise", "Critical");
+        Ticket a1 = seedTicket(Ticket.formatName(company, 1), company, user1, enterpriseCritical);
+        Ticket a2 = seedTicket(Ticket.formatName(company, 2), company, user2, enterpriseCritical);
+        Ticket a3 = seedTicket(Ticket.formatName(company, 3), company, user1, enterpriseCritical);
+        Ticket a4 = seedTicket(Ticket.formatName(company, 4), company, user2, enterpriseCritical);
         company.ticketSequence = 4L;
         java.time.LocalDateTime now = java.time.LocalDateTime.now();
         seedMessageAt(a1, "Sample ticket created.", now.minusMinutes(300));
@@ -205,9 +207,12 @@ public class UserSeeder {
         seedEntitlement("Business", "Priority support with 1 business day response");
         seedEntitlement("Enterprise", "24/7 support with SLA and dedicated TAM");
 
-        seedSupportLevel("Low", "Standard response window", 60, "Red", 720, "Yellow", 1440, "White");
-        seedSupportLevel("Normal", "Default response window", 60, "Red", 120, "Yellow", 720, "White");
-        seedSupportLevel("High", "Escalated response window", 60, "Red", 90, "Yellow", 120, "White");
+        seedSupportLevel("Critical", "Critical response level", 60, "Red");
+        seedSupportLevel("Eslacate", "Escalation response level", 120, "Yellow");
+        seedSupportLevel("Normal", "Normal response level", 1440, "White");
+        assignSupportLevelsToEntitlement("Starter", "Critical", "Eslacate", "Normal");
+        assignSupportLevelsToEntitlement("Business", "Critical", "Eslacate", "Normal");
+        assignSupportLevelsToEntitlement("Enterprise", "Critical", "Eslacate", "Normal");
 
         seedCategory("Feature", false);
         seedCategory("Bug", false);
@@ -380,10 +385,10 @@ public class UserSeeder {
         if (entitlement == null || level == null) {
             return null;
         }
-        CompanyEntitlement entry = CompanyEntitlement.find("company = ?1 and entitlement = ?2", company, entitlement)
+        CompanyEntitlement entry = CompanyEntitlement
+                .find("company = ?1 and entitlement = ?2 and supportLevel = ?3", company, entitlement, level)
                 .firstResult();
         if (entry != null) {
-            entry.supportLevel = level;
             addEntitlementIfMissing(company, entry);
             return entry;
         }
@@ -415,21 +420,59 @@ public class UserSeeder {
         entitlement.persist();
     }
 
-    private void seedSupportLevel(String name, String description, int critical, String criticalColor, int escalate,
-            String escalateColor, int normal, String normalColor) {
+    private void assignSupportLevelsToEntitlement(String entitlementName, String... supportLevelNames) {
+        Entitlement entitlement = Entitlement.find("name", entitlementName).firstResult();
+        if (entitlement == null || supportLevelNames == null || supportLevelNames.length == 0) {
+            return;
+        }
+        java.util.LinkedHashSet<SupportLevel> levels = new java.util.LinkedHashSet<>();
+        for (String levelName : supportLevelNames) {
+            if (levelName == null || levelName.isBlank()) {
+                continue;
+            }
+            SupportLevel level = SupportLevel.find("name", levelName).firstResult();
+            if (level != null) {
+                levels.add(level);
+            }
+        }
+        entitlement.supportLevels = new java.util.ArrayList<>(levels);
+    }
+
+    private void seedSupportLevel(String name, String description, int levelValue, String color) {
         SupportLevel level = SupportLevel.find("name", name).firstResult();
+        Country country = findCountryByCode("US");
+        Timezone timezone = findTimezoneByName("America/New_York");
         if (level != null) {
+            level.description = description;
+            level.level = levelValue;
+            level.color = color;
+            if (level.fromDay == null) {
+                level.fromDay = SupportLevel.DayOption.MONDAY.getCode();
+            }
+            if (level.fromTime == null) {
+                level.fromTime = SupportLevel.HourOption.H00.getCode();
+            }
+            if (level.toDay == null) {
+                level.toDay = SupportLevel.DayOption.SUNDAY.getCode();
+            }
+            if (level.toTime == null) {
+                level.toTime = SupportLevel.HourOption.H23.getCode();
+            }
+            level.country = country;
+            level.timezone = timezone;
             return;
         }
         level = new SupportLevel();
         level.name = name;
         level.description = description;
-        level.critical = critical;
-        level.criticalColor = criticalColor;
-        level.escalate = escalate;
-        level.escalateColor = escalateColor;
-        level.normal = normal;
-        level.normalColor = normalColor;
+        level.level = levelValue;
+        level.color = color;
+        level.fromDay = SupportLevel.DayOption.MONDAY.getCode();
+        level.fromTime = SupportLevel.HourOption.H00.getCode();
+        level.toDay = SupportLevel.DayOption.SUNDAY.getCode();
+        level.toTime = SupportLevel.HourOption.H23.getCode();
+        level.country = country;
+        level.timezone = timezone;
         level.persist();
     }
 

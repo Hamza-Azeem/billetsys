@@ -298,13 +298,12 @@ public class TicketResource {
             if (minutes < 0) {
                 minutes = 0;
             }
-            Integer normal = ticket.companyEntitlement.supportLevel.normal;
-            Integer escalate = ticket.companyEntitlement.supportLevel.escalate;
-            if (normal == null || escalate == null) {
+            Integer levelValue = ticket.companyEntitlement.supportLevel.level;
+            String color = ticket.companyEntitlement.supportLevel.color;
+            if (levelValue == null || color == null || color.isBlank()) {
                 continue;
             }
-            long overNormal = minutes - normal.longValue();
-            if (overNormal >= escalate.longValue()) {
+            if (minutes >= levelValue.longValue() && !"white".equalsIgnoreCase(color.trim())) {
                 return true;
             }
         }

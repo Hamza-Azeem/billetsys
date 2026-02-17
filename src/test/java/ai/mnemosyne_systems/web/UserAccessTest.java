@@ -278,18 +278,15 @@ class UserAccessTest {
         String levelName = "Test Level";
         RestAssured.given().redirects().follow(false).cookie(AuthHelper.AUTH_COOKIE, cookie)
                 .contentType(ContentType.URLENC).formParam("name", levelName)
-                .formParam("description", "Level description").formParam("critical", 30)
-                .formParam("criticalColor", "Red").formParam("escalate", 60).formParam("escalateColor", "Yellow")
-                .formParam("normal", 120).formParam("normalColor", "White").post("/support-levels").then()
-                .statusCode(303);
+                .formParam("description", "Level description").formParam("level", 30).formParam("color", "Red")
+                .post("/support-levels").then().statusCode(303);
         SupportLevel level = SupportLevel.find("name", levelName).firstResult();
         Assertions.assertNotNull(level);
 
         RestAssured.given().redirects().follow(false).cookie(AuthHelper.AUTH_COOKIE, cookie)
                 .contentType(ContentType.URLENC).formParam("name", "Updated Level")
-                .formParam("description", "Updated level").formParam("critical", 45).formParam("criticalColor", "Red")
-                .formParam("escalate", 90).formParam("escalateColor", "Yellow").formParam("normal", 180)
-                .formParam("normalColor", "White").post("/support-levels/" + level.id).then().statusCode(303);
+                .formParam("description", "Updated level").formParam("level", 45).formParam("color", "Yellow")
+                .post("/support-levels/" + level.id).then().statusCode(303);
         SupportLevel updatedLevel = refreshedSupportLevel(level.id);
         Assertions.assertEquals("Updated Level", updatedLevel.name);
 
@@ -325,8 +322,7 @@ class UserAccessTest {
         Long companyId = ensureCompany("Support CRUD Co");
         Company company = Company.findById(companyId);
         Entitlement entitlement = ensureEntitlement("Starter", "Email support");
-        SupportLevel level = ensureSupportLevel("Normal", "Default response window", 60, "Red", 120, "Yellow", 720,
-                "White");
+        SupportLevel level = ensureSupportLevel("Normal", "Normal response level", 1440, "White");
         CompanyEntitlement entry = ensureCompanyEntitlement(company, entitlement, level);
 
         RestAssured.given().redirects().follow(false).cookie(AuthHelper.AUTH_COOKIE, cookie)
@@ -652,27 +648,23 @@ class UserAccessTest {
     }
 
     @Transactional
-    SupportLevel ensureSupportLevel(String name, String description, int critical, String criticalColor, int escalate,
-            String escalateColor, int normal, String normalColor) {
+    SupportLevel ensureSupportLevel(String name, String description, int levelValue, String color) {
         SupportLevel level = SupportLevel.find("name", name).firstResult();
         if (level == null) {
             level = new SupportLevel();
             level.name = name;
-            level.description = description;
-            level.critical = critical;
-            level.criticalColor = criticalColor;
-            level.escalate = escalate;
-            level.escalateColor = escalateColor;
-            level.normal = normal;
-            level.normalColor = normalColor;
             level.persist();
         }
+        level.description = description;
+        level.level = levelValue;
+        level.color = color;
         return level;
     }
 
     @Transactional
     CompanyEntitlement ensureCompanyEntitlement(Company company, Entitlement entitlement, SupportLevel level) {
-        CompanyEntitlement entry = CompanyEntitlement.find("company = ?1 and entitlement = ?2", company, entitlement)
+        CompanyEntitlement entry = CompanyEntitlement
+                .find("company = ?1 and entitlement = ?2 and supportLevel = ?3", company, entitlement, level)
                 .firstResult();
         if (entry == null) {
             entry = new CompanyEntitlement();

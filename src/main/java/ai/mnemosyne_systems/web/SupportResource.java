@@ -625,21 +625,13 @@ public class SupportResource {
     }
 
     private String resolveSlaColor(ai.mnemosyne_systems.model.SupportLevel level, long minutes) {
-        if (level == null || level.normal == null || level.escalate == null || level.critical == null) {
+        if (level == null || level.level == null || level.color == null || level.color.isBlank()) {
             return null;
         }
-        long overNormal = minutes - level.normal.longValue();
-        if (overNormal < 0) {
-            return level.normalColor;
+        if (minutes >= level.level.longValue()) {
+            return level.color;
         }
-        long criticalThreshold = level.escalate.longValue() + level.critical.longValue();
-        if (overNormal >= criticalThreshold) {
-            return level.criticalColor;
-        }
-        if (overNormal >= level.escalate.longValue()) {
-            return level.escalateColor;
-        }
-        return level.normalColor;
+        return "White";
     }
 
     private void sortBySla(List<Ticket> tickets, Map<Long, String> slaColors, Map<Long, LocalDateTime> messageDates) {

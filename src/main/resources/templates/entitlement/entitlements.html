@@ -22,7 +22,7 @@
     <tbody>
     {#for entitlement in entitlements}
     <tr>
-        <td><a href="/entitlements/{entitlement.id}/edit">{entitlement.name}</a></td>
+        <td><a href="/entitlements/{entitlement.id}">{entitlement.name}</a></td>
         <td>{descriptionPreviews.get(entitlement.id)}</td>
     </tr>
     {/for}

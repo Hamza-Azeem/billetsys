@@ -88,12 +88,14 @@ erDiagram
         BIGINT id PK
         STRING name
         STRING description
-        INT critical
-        STRING critical_color
-        INT escalate
-        STRING escalate_color
-        INT normal
-        STRING normal_color
+        INT level
+        STRING color
+        INT from_day
+        INT from_time
+        INT to_day
+        INT to_time
+        BIGINT country_id FK
+        BIGINT timezone_id FK
     }
 
     CATEGORY {
@@ -109,11 +111,17 @@ erDiagram
         BIGINT support_level_id FK
     }
 
+    ENTITLEMENT_SUPPORT_LEVEL {
+        BIGINT entitlement_id PK, FK
+        BIGINT support_level_id PK, FK
+    }
+
     COUNTRY ||--o{ TIMEZONE : has
     COUNTRY ||--o{ COMPANY : locates
     COUNTRY ||--o{ USER : locates
     TIMEZONE ||--o{ COMPANY : assigns
     TIMEZONE ||--o{ USER : assigns
+    TIMEZONE ||--o{ SUPPORT_LEVEL : assigns
     COMPANY ||--o{ TICKET : has
     COMPANY }o--o{ USER : associates
     COMPANY }o--|| PRIMARY_CONTACT : has
@@ -125,7 +133,10 @@ erDiagram
     MESSAGE ||--o{ ATTACHMENT : has
     MESSAGE }o--|| USER : authored
     ENTITLEMENT ||--o{ COMPANY_ENTITLEMENT : includes
+    ENTITLEMENT ||--o{ ENTITLEMENT_SUPPORT_LEVEL : maps
+    COUNTRY ||--o{ SUPPORT_LEVEL : locates
     SUPPORT_LEVEL ||--o{ COMPANY_ENTITLEMENT : levels
+    SUPPORT_LEVEL ||--o{ ENTITLEMENT_SUPPORT_LEVEL : maps
     COMPANY_ENTITLEMENT ||--o{ TICKET : applies
     CATEGORY ||--o{ TICKET : categorizes
 ```

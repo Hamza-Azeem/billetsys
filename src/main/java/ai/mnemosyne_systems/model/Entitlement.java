@@ -14,8 +14,12 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
+import java.util.List;
 
 @Entity
 @Table(name = "entitlements")
@@ -31,4 +35,8 @@ public class Entitlement extends PanacheEntityBase {
 
     @Column(nullable = false)
     public String description;
+
+    @ManyToMany
+    @JoinTable(name = "entitlement_support_levels", joinColumns = @JoinColumn(name = "entitlement_id"), inverseJoinColumns = @JoinColumn(name = "support_level_id"))
+    public List<SupportLevel> supportLevels;
 }

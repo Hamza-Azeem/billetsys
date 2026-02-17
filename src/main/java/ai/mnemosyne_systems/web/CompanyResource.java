@@ -242,13 +242,14 @@ public class CompanyResource {
         company.users.addAll(resolveUsers(userIdsModified, tamIds));
         java.util.List<CompanyEntitlement> existingEntitlements = CompanyEntitlement.find("company = ?1", company)
                 .list();
-        java.util.Set<Long> selectedEntitlementIds = applyEntitlements(company, entitlementIds, supportLevelIds,
+        java.util.Set<String> selectedEntitlementPairs = applyEntitlements(company, entitlementIds, supportLevelIds,
                 existingEntitlements);
         for (CompanyEntitlement entry : existingEntitlements) {
-            if (entry.entitlement == null) {
+            if (entry.entitlement == null || entry.supportLevel == null) {
                 continue;
             }
-            if (selectedEntitlementIds.contains(entry.entitlement.id)) {
+            String pairKey = entry.entitlement.id + ":" + entry.supportLevel.id;
+            if (selectedEntitlementPairs.contains(pairKey)) {
                 continue;
             }
             if (Ticket.count("companyEntitlement", entry) > 0) {
@@ -318,16 +319,16 @@ public class CompanyResource {
         return User.list("id in ?1 and type in ?2", ids, java.util.List.of(User.TYPE_USER, User.TYPE_TAM));
     }
 
-    private java.util.Set<Long> applyEntitlements(Company company, java.util.List<Long> entitlementIds,
+    private java.util.Set<String> applyEntitlements(Company company, java.util.List<Long> entitlementIds,
             java.util.List<Long> supportLevelIds, java.util.List<CompanyEntitlement> existingEntitlements) {
-        java.util.Set<Long> selectedEntitlementIds = new java.util.HashSet<>();
+        java.util.Set<String> selectedEntitlementPairs = new java.util.HashSet<>();
         if (entitlementIds == null || supportLevelIds == null) {
-            return selectedEntitlementIds;
+            return selectedEntitlementPairs;
         }
-        java.util.Map<Long, CompanyEntitlement> byEntitlement = new java.util.HashMap<>();
+        java.util.Map<String, CompanyEntitlement> byEntitlementPair = new java.util.HashMap<>();
         for (CompanyEntitlement entry : existingEntitlements) {
-            if (entry.entitlement != null) {
-                byEntitlement.put(entry.entitlement.id, entry);
+            if (entry.entitlement != null && entry.supportLevel != null) {
+                byEntitlementPair.put(entry.entitlement.id + ":" + entry.supportLevel.id, entry);
             }
         }
         int count = Math.min(entitlementIds.size(), supportLevelIds.size());
@@ -342,8 +343,9 @@ public class CompanyResource {
             if (entitlement == null || supportLevel == null) {
                 continue;
             }
-            selectedEntitlementIds.add(entitlement.id);
-            CompanyEntitlement entry = byEntitlement.get(entitlement.id);
+            String pairKey = entitlement.id + ":" + supportLevel.id;
+            selectedEntitlementPairs.add(pairKey);
+            CompanyEntitlement entry = byEntitlementPair.get(pairKey);
             if (entry == null) {
                 entry = new CompanyEntitlement();
                 entry.company = company;
@@ -352,7 +354,7 @@ public class CompanyResource {
             entry.supportLevel = supportLevel;
             entry.persist();
         }
-        return selectedEntitlementIds;
+        return selectedEntitlementPairs;
     }
 
     private void validatePrimaryContactUser(String username, String email, String password) {

@@ -39,10 +39,63 @@
                 </div>
             </div>
         </div>
+        <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 12px; align-items: start;">
+            <div>
+                <label>Available Support Levels</label>
+                <select id="available-support-levels" multiple size="8" style="width: 100%;">
+                    {#for level in supportLevels}
+                    {#if !selectedSupportLevelIds.contains(level.id)}
+                    <option value="{level.id}">{level.name}</option>
+                    {/if}
+                    {/for}
+                </select>
+            </div>
+            <div style="display: grid; gap: 8px; margin-top: 26px;">
+                <button type="button" class="secondary-button" aria-label="Add support level" onclick="moveSelected('available-support-levels', 'assigned-support-levels')">→</button>
+                <button type="button" class="secondary-button" aria-label="Remove support level" onclick="moveSelected('assigned-support-levels', 'available-support-levels')">←</button>
+            </div>
+            <div>
+                <label>Assigned Support Levels</label>
+                <select id="assigned-support-levels" name="supportLevelIds" multiple size="8" style="width: 100%;">
+                    {#for level in supportLevels}
+                    {#if selectedSupportLevelIds.contains(level.id)}
+                    <option value="{level.id}" selected>{level.name}</option>
+                    {/if}
+                    {/for}
+                </select>
+            </div>
+        </div>
         <div class="form-actions">
             <button type="submit" class="action-button">Save</button>
         </div>
     </form>
 </div>
+<script>
+    function moveSelected(sourceId, targetId) {
+        const source = document.getElementById(sourceId);
+        const target = document.getElementById(targetId);
+        if (!source || !target) {
+            return;
+        }
+        const selected = Array.from(source.options).filter((option) => option.selected);
+        selected.forEach((option) => {
+            option.selected = true;
+            target.appendChild(option);
+        });
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        const form = document.querySelector("form");
+        const assigned = document.getElementById("assigned-support-levels");
+        if (!form || !assigned) {
+            return;
+        }
+        form.addEventListener("submit", () => {
+            Array.from(assigned.options).forEach((option) => {
+                option.selected = true;
+            });
+        });
+    });
+</script>
 {/content}
 {/include}

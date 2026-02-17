@@ -9,6 +9,7 @@
 package ai.mnemosyne_systems.web;
 
 import ai.mnemosyne_systems.model.Entitlement;
+import ai.mnemosyne_systems.model.SupportLevel;
 import ai.mnemosyne_systems.model.User;
 import io.quarkus.qute.Location;
 import io.quarkus.qute.Template;
@@ -45,10 +46,14 @@ public class EntitlementResource {
     @Location("entitlement/entitlement-form.html")
     Template entitlementFormTemplate;
 
+    @Location("entitlement/entitlement-view.html")
+    Template entitlementViewTemplate;
+
     @GET
     public TemplateInstance listEntitlements(@CookieParam(AuthHelper.AUTH_COOKIE) String auth) {
         User user = requireAdmin(auth);
-        List<Entitlement> entitlements = Entitlement.listAll();
+        List<Entitlement> entitlements = Entitlement
+                .find("select distinct e from Entitlement e left join fetch e.supportLevels").list();
         Map<Long, String> descriptionPreviews = new LinkedHashMap<>();
         for (Entitlement entitlement : entitlements) {
             if (entitlement.id != null) {
@@ -65,19 +70,55 @@ public class EntitlementResource {
         User user = requireAdmin(auth);
         Entitlement entitlement = new Entitlement();
         entitlement.description = "";
+        entitlement.supportLevels = java.util.List.of();
         return entitlementFormTemplate.data("entitlement", entitlement).data("action", "/entitlements")
+                .data("supportLevels", SupportLevel.listAll()).data("selectedSupportLevelIds", java.util.Set.of())
                 .data("title", "New entitlement").data("currentUser", user);
+    }
+
+    @GET
+    @Path("{id}")
+    public TemplateInstance viewEntitlement(@CookieParam(AuthHelper.AUTH_COOKIE) String auth,
+            @PathParam("id") Long id) {
+        User user = requireAdmin(auth);
+        Entitlement entitlement = Entitlement
+                .find("select e from Entitlement e left join fetch e.supportLevels where e.id = ?1", id).firstResult();
+        if (entitlement == null) {
+            throw new NotFoundException();
+        }
+        Map<Long, String> fromValues = new LinkedHashMap<>();
+        Map<Long, String> toValues = new LinkedHashMap<>();
+        if (entitlement.supportLevels != null) {
+            for (SupportLevel level : entitlement.supportLevels) {
+                if (level != null && level.id != null) {
+                    fromValues.put(level.id, formatDayTime(level.fromDay, level.fromTime));
+                    toValues.put(level.id, formatDayTime(level.toDay, level.toTime));
+                }
+            }
+        }
+        return entitlementViewTemplate.data("entitlement", entitlement).data("fromValues", fromValues)
+                .data("toValues", toValues).data("currentUser", user);
     }
 
     @GET
     @Path("{id}/edit")
     public TemplateInstance editForm(@CookieParam(AuthHelper.AUTH_COOKIE) String auth, @PathParam("id") Long id) {
         User user = requireAdmin(auth);
-        Entitlement entitlement = Entitlement.findById(id);
+        Entitlement entitlement = Entitlement
+                .find("select e from Entitlement e left join fetch e.supportLevels where e.id = ?1", id).firstResult();
         if (entitlement == null) {
             throw new NotFoundException();
         }
+        java.util.Set<Long> selectedSupportLevelIds = new java.util.LinkedHashSet<>();
+        if (entitlement.supportLevels != null) {
+            for (SupportLevel level : entitlement.supportLevels) {
+                if (level != null && level.id != null) {
+                    selectedSupportLevelIds.add(level.id);
+                }
+            }
+        }
         return entitlementFormTemplate.data("entitlement", entitlement).data("action", "/entitlements/" + id)
+                .data("supportLevels", SupportLevel.listAll()).data("selectedSupportLevelIds", selectedSupportLevelIds)
                 .data("title", "Edit entitlement").data("currentUser", user);
     }
 
@@ -85,12 +126,13 @@ public class EntitlementResource {
     @Path("")
     @Transactional
     public Response createEntitlement(@CookieParam(AuthHelper.AUTH_COOKIE) String auth, @FormParam("name") String name,
-            @FormParam("description") String description) {
+            @FormParam("description") String description, @FormParam("supportLevelIds") List<Long> supportLevelIds) {
         requireAdmin(auth);
         validate(name, description);
         Entitlement entitlement = new Entitlement();
         entitlement.name = name.trim();
         entitlement.description = description.trim();
+        entitlement.supportLevels = resolveSupportLevels(supportLevelIds);
         entitlement.persist();
         return Response.seeOther(URI.create("/entitlements")).build();
     }
@@ -99,15 +141,18 @@ public class EntitlementResource {
     @Path("{id}")
     @Transactional
     public Response updateEntitlement(@CookieParam(AuthHelper.AUTH_COOKIE) String auth, @PathParam("id") Long id,
-            @FormParam("name") String name, @FormParam("description") String description) {
+            @FormParam("name") String name, @FormParam("description") String description,
+            @FormParam("supportLevelIds") List<Long> supportLevelIds) {
         requireAdmin(auth);
-        Entitlement entitlement = Entitlement.findById(id);
+        Entitlement entitlement = Entitlement
+                .find("select e from Entitlement e left join fetch e.supportLevels where e.id = ?1", id).firstResult();
         if (entitlement == null) {
             throw new NotFoundException();
         }
         validate(name, description);
         entitlement.name = name.trim();
         entitlement.description = description.trim();
+        entitlement.supportLevels = resolveSupportLevels(supportLevelIds);
         return Response.seeOther(URI.create("/entitlements")).build();
     }
 
@@ -133,6 +178,13 @@ public class EntitlementResource {
         }
     }
 
+    private List<SupportLevel> resolveSupportLevels(List<Long> supportLevelIds) {
+        if (supportLevelIds == null || supportLevelIds.isEmpty()) {
+            return java.util.List.of();
+        }
+        return SupportLevel.list("id in ?1", supportLevelIds);
+    }
+
     private String firstLinePlainText(String description) {
         if (description == null || description.isBlank()) {
             return "";
@@ -144,6 +196,34 @@ public class EntitlementResource {
         firstLine = firstLine.replaceAll("^[>#*\\-\\s]+", "");
         firstLine = firstLine.replace("**", "").replace("__", "").replace("`", "").replace("*", "").replace("_", "");
         return firstLine.replaceAll("\\s+", " ").trim();
+    }
+
+    private String formatDayTime(Integer dayCode, Integer timeCode) {
+        return dayLabel(dayCode) + " (" + hourLabel(timeCode) + ")";
+    }
+
+    private String dayLabel(Integer code) {
+        if (code == null) {
+            return "";
+        }
+        for (SupportLevel.DayOption option : SupportLevel.DayOption.values()) {
+            if (option.getCode() == code) {
+                return option.getLabel();
+            }
+        }
+        return "";
+    }
+
+    private String hourLabel(Integer code) {
+        if (code == null) {
+            return "";
+        }
+        for (SupportLevel.HourOption option : SupportLevel.HourOption.values()) {
+            if (option.getCode() == code) {
+                return option.getLabel();
+            }
+        }
+        return "";
     }
 
     private User requireAdmin(String auth) {
