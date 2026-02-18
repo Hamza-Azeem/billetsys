@@ -8,7 +8,7 @@
 
 {#include admin-layout}
     {#content}
-        <div class="form-card" style="max-width: 980px;">
+        <div class="form-card">
             <h1>{title}</h1>
             <form method="post" action="{action}" onsubmit="selectAll('selectedUsers'); selectAll('selectedTams'); syncEntitlementHidden()">
                 <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start;">
@@ -91,7 +91,7 @@
                                             {/for}
                                         </select>
                                     </div>
-                                    <button type="button" class="secondary-button" onclick="addEntitlementPair()">Add</button>
+                                    <button type="button" class="action-button" onclick="addEntitlementPair()">Add</button>
                                 </div>
                                 <div id="entitlementHidden"></div>
                             </div>

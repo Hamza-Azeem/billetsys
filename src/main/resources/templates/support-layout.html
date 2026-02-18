@@ -251,7 +251,10 @@
             border: 1px solid var(--card-border);
         }
         .form-card {
-            max-width: 420px;
+            max-width: 1200px;
+            width: min(100%, 1200px);
+            margin: 0 auto;
+            box-sizing: border-box;
             background: var(--card-bg);
             border: 1px solid var(--card-border);
             border-radius: 8px;
@@ -259,10 +262,11 @@
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
         }
         .form-card.full-width {
-            max-width: none;
+            max-width: 1200px;
+            width: min(100%, 1200px);
         }
         .ticket-detail-card {
-            max-width: 900px;
+            max-width: 1200px;
         }
         .ticket-detail-grid {
             display: grid;
