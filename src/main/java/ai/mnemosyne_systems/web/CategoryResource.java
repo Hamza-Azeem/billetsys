@@ -43,6 +43,9 @@ public class CategoryResource {
     @Location("category/category-form.html")
     Template categoryFormTemplate;
 
+    @Location("category/category-view.html")
+    Template categoryViewTemplate;
+
     @GET
     public TemplateInstance list(@CookieParam(AuthHelper.AUTH_COOKIE) String auth) {
         User user = requireAdmin(auth);
@@ -68,6 +71,17 @@ public class CategoryResource {
         }
         return categoryFormTemplate.data("category", category).data("action", "/categories/" + id)
                 .data("title", "Edit Category").data("currentUser", user);
+    }
+
+    @GET
+    @Path("/{id}")
+    public TemplateInstance view(@CookieParam(AuthHelper.AUTH_COOKIE) String auth, @PathParam("id") Long id) {
+        User user = requireAdmin(auth);
+        Category category = Category.findById(id);
+        if (category == null) {
+            throw new NotFoundException();
+        }
+        return categoryViewTemplate.data("category", category).data("currentUser", user);
     }
 
     @POST

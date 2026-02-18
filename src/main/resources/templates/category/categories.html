@@ -22,7 +22,7 @@
             <tbody>
             {#for cat in categories}
                 <tr>
-                    <td>{cat.name}</td>
+                    <td><a href="/categories/{cat.id}">{cat.name}</a></td>
                     <td>{#if cat.isDefault}Yes{#else}No{/if}</td>
                 </tr>
             {/for}
