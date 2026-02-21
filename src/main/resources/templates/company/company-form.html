@@ -11,7 +11,7 @@
         <div class="form-card">
             <h1>{title}</h1>
             <form method="post" action="{action}" onsubmit="selectAll('selectedUsers'); selectAll('selectedTams'); syncEntitlementHidden()">
-                <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start;">
+                <div style="display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start;">
                     <div>
                         <h4>Company</h4>
                         <div>
@@ -51,12 +51,12 @@
                         </div>
                         <div>
                             <label>Country
-                                    {#countrySelect selectedCountry=company.country countries=countries /}
+                                    {#countrySelect selectedCountry=company.country countries=countries includePlaceholder=false /}
                             </label>
                         </div>
                         <div>
                             <label>Time Zone
-                                    {#timezoneSelect selectedTimezone=company.timezone timezones=timezones /}
+                                    {#timezoneSelect selectedTimezone=company.timezone timezones=timezones includePlaceholder=false /}
                             </label>
                         </div>
                     <div style="display: grid; gap: 24px; margin-top: 15px">
@@ -64,16 +64,35 @@
                             <label style="font-weight: 600;">Entitlements</label>
                             <div style="display: grid; gap: 12px;">
                                 <div>
-                                    <select id="entitlementPairs" multiple size="6" style="width: 100%;">
+                                    <table style="width: 100%;">
+                                        <thead>
+                                        <tr>
+                                            <th>Entitlement</th>
+                                            <th>Level</th>
+                                            <th>Date</th>
+                                            <th>Duration</th>
+                                            <th></th>
+                                        </tr>
+                                        </thead>
+                                        <tbody id="entitlementRows">
                                         {#for entry in companyEntitlements}
-                                            <option value="{entry.entitlement.id}:{entry.supportLevel.id}">{entry.entitlement.name} - {entry.supportLevel.name}</option>
+                                            <tr data-entitlement-id="{entry.entitlement.id}" data-level-id="{entry.supportLevel.id}">
+                                                <td>{entry.entitlement.name}</td>
+                                                <td>{entry.supportLevel.name}</td>
+                                                <td><input type="date" value="{entry.date}" required></td>
+                                                <td>
+                                                    <select required>
+                                                        <option value="1" {#if entry.duration != null && entry.duration == 1}selected{/if}>Monthly</option>
+                                                        <option value="2" {#if entry.duration == null || entry.duration == 2}selected{/if}>Yearly</option>
+                                                    </select>
+                                                </td>
+                                                <td><button type="button" class="action-button" onclick="removeEntitlementRow(this)">Remove</button></td>
+                                            </tr>
                                         {/for}
-                                    </select>
+                                        </tbody>
+                                    </table>
                                 </div>
-                                <div style="display: flex; gap: 8px;">
-                                    <button type="button" class="secondary-button" onclick="removeSelectedEntitlement()">Remove</button>
-                                </div>
-                                <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 12px; align-items: end;">
+                                <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto; gap: 12px; align-items: end;">
                                     <div>
                                         <label style="font-weight: 600;">Entitlement</label>
                                         <select id="entitlementPicker">
@@ -87,8 +106,19 @@
                                         <label style="font-weight: 600;">Level</label>
                                         <select id="supportLevelPicker">
                                             {#for level in supportLevels}
-                                                <option value="{level.id}">{level.name}</option>
+                                                <option value="{level.id}" data-level-value="{level.level}">{level.name}</option>
                                             {/for}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label style="font-weight: 600;">Date</label>
+                                        <input type="date" id="entitlementDatePicker" required>
+                                    </div>
+                                    <div>
+                                        <label style="font-weight: 600;">Duration</label>
+                                        <select id="entitlementDurationPicker" required>
+                                            <option value="1">Monthly</option>
+                                            <option value="2" selected>Yearly</option>
                                         </select>
                                     </div>
                                     <button type="button" class="action-button" onclick="addEntitlementPair()">Add</button>
@@ -212,7 +242,7 @@
                                 </label>
                             </div>
                         {#else}
-                            <label>Select from users
+                            <label aria-label="Primary contact">
                             <select style="width: 100%;" name="primaryContact">
                                 {#for user in users}
                                     {#if selectedUserIds.contains(user.id)}
@@ -256,46 +286,68 @@
             function addEntitlementPair() {
                 const entitlementPicker = document.getElementById('entitlementPicker');
                 const levelPicker = document.getElementById('supportLevelPicker');
-                const list = document.getElementById('entitlementPairs');
-                if (!entitlementPicker || !levelPicker || !list) {
+                const datePicker = document.getElementById('entitlementDatePicker');
+                const durationPicker = document.getElementById('entitlementDurationPicker');
+                const rows = document.getElementById('entitlementRows');
+                if (!entitlementPicker || !levelPicker || !datePicker || !durationPicker || !rows) {
                     return;
                 }
-                if (!entitlementPicker.value || !levelPicker.value) {
+                if (!entitlementPicker.value || !levelPicker.value || !datePicker.value || !durationPicker.value) {
                     return;
                 }
-                const value = entitlementPicker.value + ':' + levelPicker.value;
-                const exists = Array.from(list.options).some(option => option.value === value);
-                if (exists) {
-                    return;
-                }
+                const entitlementId = entitlementPicker.value;
                 const entitlementText = entitlementPicker.options[entitlementPicker.selectedIndex].textContent;
-                const levelText = levelPicker.options[levelPicker.selectedIndex].textContent;
-                const option = document.createElement('option');
-                option.value = value;
-                option.textContent = entitlementText + ' - ' + levelText;
-                list.appendChild(option);
+                const selectedLevelOption = levelPicker.options[levelPicker.selectedIndex];
+                const dateValue = datePicker.value;
+                const durationValue = durationPicker.value;
+                const selectedLevelValue = Number(selectedLevelOption.getAttribute('data-level-value'));
+                const levelOptions = [selectedLevelOption];
+                if (!Number.isNaN(selectedLevelValue)) {
+                    Array.from(levelPicker.options).forEach((option) => {
+                        const value = Number(option.getAttribute('data-level-value'));
+                        if (!Number.isNaN(value) && value > selectedLevelValue) {
+                            levelOptions.push(option);
+                        }
+                    });
+                }
+                levelOptions.forEach((option) => {
+                    addEntitlementRow(rows, entitlementId, entitlementText, option.value, option.textContent, dateValue, durationValue);
+                });
                 entitlementPicker.selectedIndex = 0;
                 levelPicker.selectedIndex = 0;
             }
 
-            function removeSelectedEntitlement() {
-                const list = document.getElementById('entitlementPairs');
-                if (!list) {
+            function addEntitlementRow(rows, entitlementId, entitlementText, levelId, levelText, dateValue, durationValue) {
+                const exists = Array.from(rows.querySelectorAll('tr')).some((row) =>
+                    row.dataset.entitlementId === entitlementId && row.dataset.levelId === levelId
+                );
+                if (exists) {
                     return;
                 }
-                const selected = Array.from(list.selectedOptions);
-                selected.forEach(option => option.remove());
+                const row = document.createElement('tr');
+                row.dataset.entitlementId = entitlementId;
+                row.dataset.levelId = levelId;
+                row.innerHTML =
+                    '<td>' + entitlementText + '</td>' +
+                    '<td>' + levelText + '</td>' +
+                    '<td><input type="date" value="' + dateValue + '" required></td>' +
+                    '<td><select required><option value="1"' + (durationValue === '1' ? ' selected' : '') + '>Monthly</option><option value="2"' + (durationValue === '2' ? ' selected' : '') + '>Yearly</option></select></td>' +
+                    '<td><button type="button" class="action-button" onclick="removeEntitlementRow(this)">Remove</button></td>';
+                rows.appendChild(row);
             }
 
             function syncEntitlementHidden() {
-                const list = document.getElementById('entitlementPairs');
+                const rows = document.getElementById('entitlementRows');
                 const container = document.getElementById('entitlementHidden');
-                if (!list || !container) {
+                if (!rows || !container) {
                     return;
                 }
                 container.innerHTML = '';
-                Array.from(list.options).forEach(option => {
-                    const [entitlementId, levelId] = option.value.split(':');
+                Array.from(rows.querySelectorAll('tr')).forEach(row => {
+                    const entitlementId = row.dataset.entitlementId;
+                    const levelId = row.dataset.levelId;
+                    const dateInput = row.querySelector('input[type="date"]');
+                    const durationInput = row.querySelector('select');
                     if (!entitlementId || !levelId) {
                         return;
                     }
@@ -309,14 +361,38 @@
                     levelInput.name = 'levelIds';
                     levelInput.value = levelId;
                     container.appendChild(levelInput);
+                    const dateHiddenInput = document.createElement('input');
+                    dateHiddenInput.type = 'hidden';
+                    dateHiddenInput.name = 'entitlementDates';
+                    dateHiddenInput.value = dateInput ? dateInput.value : '';
+                    container.appendChild(dateHiddenInput);
+                    const durationHiddenInput = document.createElement('input');
+                    durationHiddenInput.type = 'hidden';
+                    durationHiddenInput.name = 'entitlementDurations';
+                    durationHiddenInput.value = durationInput ? durationInput.value : '2';
+                    container.appendChild(durationHiddenInput);
                 });
             }
+
+            function removeEntitlementRow(button) {
+                const row = button ? button.closest('tr') : null;
+                if (row) {
+                    row.remove();
+                }
+            }
+
+            document.addEventListener('DOMContentLoaded', () => {
+                const datePicker = document.getElementById('entitlementDatePicker');
+                if (datePicker && !datePicker.value) {
+                    datePicker.value = new Date().toISOString().slice(0, 10);
+                }
+            });
 
             function loadTimezones(select) {
                 const target = select.id;
                 var countryId = document.getElementById(select.id).value;
                 var tzSelect = target === 'primaryContactCountry' ? document.getElementById('primaryContactTimeZone') : document.getElementById('timezoneSelect');
-                tzSelect.innerHTML = '<option value="">Select time zone</option>';
+                tzSelect.innerHTML = '';
                 if (!countryId) return;
                 fetch('/timezones?countryId=' + countryId)
                     .then(function(r) { return r.json(); })
@@ -327,8 +403,15 @@
                             opt.textContent = data[i].name;
                             tzSelect.appendChild(opt);
                         }
-                        if (data.length === 1) {
-                            tzSelect.options[1].selected = true;
+                        if (data.length > 0) {
+                            var nyOption = Array.from(tzSelect.options).find(function(opt) {
+                                return opt.textContent === 'America/New_York';
+                            });
+                            if (nyOption) {
+                                nyOption.selected = true;
+                            } else {
+                                tzSelect.options[0].selected = true;
+                            }
                         }
                     });
             }

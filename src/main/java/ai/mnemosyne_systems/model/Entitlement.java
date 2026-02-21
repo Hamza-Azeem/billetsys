@@ -24,7 +24,6 @@ import java.util.List;
 @Entity
 @Table(name = "entitlements")
 public class Entitlement extends PanacheEntityBase {
-
     @Id
     @SequenceGenerator(name = "entitlement_seq", sequenceName = "entitlement_seq", allocationSize = 1)
     @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "entitlement_seq")

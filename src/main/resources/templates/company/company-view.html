@@ -21,6 +21,10 @@
                     <td>{company.address2}</td>
                 </tr>
                 <tr>
+                    <th>Phone Number</th>
+                    <td>{#if company.phoneNumber}{company.phoneNumber}{/if}</td>
+                </tr>
+                <tr>
                     <th>City</th>
                     <td>{company.city}</td>
                 </tr>
@@ -37,10 +41,6 @@
                     <td>{#if company.country}{company.country.name}{/if}</td>
                 </tr>
                 <tr>
-                    <th>Phone Number</th>
-                    <td>{#if company.phoneNumber}{company.phoneNumber}{/if}</td>
-                </tr>
-                <tr>
                     <th>Time Zone</th>
                     <td>{#if company.timezone}{company.timezone.name}{/if}</td>
                 </tr>
@@ -51,7 +51,7 @@
                             <span>-</span>
                         {#else}
                             {#for user in companyUsers}
-                                <div> <a href="/users/{user.id}/edit">{user.name} </a></div>
+                                <div> <a href="/users/{user.id}">{user.name} </a></div>
                             {/for}
                         {/if}
                     </td>
@@ -63,7 +63,7 @@
                             <span>-</span>
                         {#else}
                             {#for user in companyTams}
-                                <div><a href="/users/{user.id}/edit">{user.name}</a></div>
+                                <div><a href="/users/{user.id}">{user.name}</a></div>
                             {/for}
                         {/if}
                     </td>
@@ -74,9 +74,26 @@
                         {#if companyEntitlements.isEmpty}
                             <span>-</span>
                         {#else}
-                            {#for entry in companyEntitlements}
-                                <div>{entry.entitlement.name} - {entry.supportLevel.name}</div>
-                            {/for}
+                            <table style="width: 100%;">
+                                <thead>
+                                <tr>
+                                    <th>Entitlement</th>
+                                    <th>Level</th>
+                                    <th>Date</th>
+                                    <th>Duration</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {#for entry in companyEntitlements}
+                                    <tr style="{#if expiredEntitlementIds.contains(entry.id)}background-color:#000;color:#fff;{/if}">
+                                        <td>{entry.entitlement.name}</td>
+                                        <td>{entry.supportLevel.name}</td>
+                                        <td>{entry.date}</td>
+                                        <td>{#if entry.duration != null && entry.duration == 1}Monthly{#else}Yearly{/if}</td>
+                                    </tr>
+                                {/for}
+                                </tbody>
+                            </table>
                         {/if}
                     </td>
                 </tr>
@@ -103,7 +120,7 @@
                 </tr>
                 <tr>
                     <th>Name</th>
-                    <td>{#if company.primaryContact}<a href="/users/{primaryContact.id}/edit">{company.primaryContact.name} </a>{/if}</td>
+                    <td>{#if company.primaryContact}<a href="/users/{primaryContact.id}">{company.primaryContact.name} </a>{/if}</td>
                 </tr>
                 <tr>
                     <th>Full Name</th>

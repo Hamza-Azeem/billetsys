@@ -136,6 +136,8 @@ public class UserSeeder {
                 "GB", User.TYPE_USER, "user1");
         User user2 = seedUser("user2", "Jane Smith", "user2@mnemosyne-systems.ai", "+1-555-0202", null, "Europe/Paris",
                 "FR", User.TYPE_USER, "user2");
+        User userB = seedUser("userb", "Bob Brown", "userb@mnemosyne-systems.ai", "+1-555-0203", null,
+                "America/New_York", "US", User.TYPE_USER, "userb");
         User tam = User.find("email", "tam@mnemosyne-systems.ai").firstResult();
         if (tam == null) {
             tam = seedUser("tam", "Technical Account Manager", "tam@mnemosyne-systems.ai", "+1-555-0300", "300",
@@ -199,6 +201,37 @@ public class UserSeeder {
             a4.status = "Closed";
             a4.persist();
         }
+
+        Company companyB = Company
+                .find("select distinct c from Company c left join fetch c.users where c.name = ?1", "B").firstResult();
+        if (companyB == null) {
+            companyB = new Company();
+            companyB.name = "B";
+            companyB.country = findCountryByCode("US");
+            companyB.timezone = findTimezoneByName("America/New_York");
+            companyB.primaryContact = primaryContact;
+            companyB.persist();
+        }
+        if (companyB.country == null) {
+            companyB.country = findCountryByCode("US");
+        }
+        if (companyB.timezone == null) {
+            companyB.timezone = findTimezoneByName("America/New_York");
+        }
+        companyB.users.removeIf(existing -> User.TYPE_ADMIN.equalsIgnoreCase(existing.type)
+                || User.TYPE_SUPPORT.equalsIgnoreCase(existing.type));
+        addUserIfMissing(companyB, userB);
+        addUserIfMissing(companyB, tam);
+        addUserIfMissing(companyB, primaryContact);
+        CompanyEntitlement starterCritical = ensureCompanyEntitlement(companyB, "Starter", "Critical");
+        if (starterCritical != null) {
+            starterCritical.duration = CompanyEntitlement.DURATION_MONTHLY;
+            starterCritical.date = java.time.LocalDate.now().minusMonths(2);
+            starterCritical.persist();
+        }
+        Ticket b1 = seedTicket(Ticket.formatName(companyB, 1), companyB, userB, starterCritical);
+        companyB.ticketSequence = 1L;
+        seedMessageAt(b1, "Sample ticket created.", now.minusMinutes(15));
     }
 
     @Transactional
@@ -389,6 +422,12 @@ public class UserSeeder {
                 .find("company = ?1 and entitlement = ?2 and supportLevel = ?3", company, entitlement, level)
                 .firstResult();
         if (entry != null) {
+            if (entry.date == null) {
+                entry.date = java.time.LocalDate.now();
+            }
+            if (entry.duration == null) {
+                entry.duration = CompanyEntitlement.DURATION_YEARLY;
+            }
             addEntitlementIfMissing(company, entry);
             return entry;
         }
@@ -396,6 +435,8 @@ public class UserSeeder {
         entry.company = company;
         entry.entitlement = entitlement;
         entry.supportLevel = level;
+        entry.date = java.time.LocalDate.now();
+        entry.duration = CompanyEntitlement.DURATION_YEARLY;
         entry.persist();
         addEntitlementIfMissing(company, entry);
         return entry;
@@ -412,6 +453,7 @@ public class UserSeeder {
     private void seedEntitlement(String name, String description) {
         Entitlement entitlement = Entitlement.find("name", name).firstResult();
         if (entitlement != null) {
+            entitlement.description = description;
             return;
         }
         entitlement = new Entitlement();

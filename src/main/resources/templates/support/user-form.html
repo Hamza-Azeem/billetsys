@@ -86,7 +86,7 @@
             function loadTimezones() {
                 var countryId = document.getElementById('countrySelect').value;
                 var tzSelect = document.getElementById('timezoneSelect');
-                tzSelect.innerHTML = '<option value="">Select time zone</option>';
+                tzSelect.innerHTML = '';
                 if (!countryId) return;
                 fetch('/timezones?countryId=' + countryId)
                     .then(function(r) { return r.json(); })
@@ -97,8 +97,15 @@
                             opt.textContent = data[i].name;
                             tzSelect.appendChild(opt);
                         }
-                        if (data.length === 1) {
-                            tzSelect.options[1].selected = true;
+                        if (data.length > 0) {
+                            var nyOption = Array.from(tzSelect.options).find(function(opt) {
+                                return opt.textContent === 'America/New_York';
+                            });
+                            if (nyOption) {
+                                nyOption.selected = true;
+                            } else {
+                                tzSelect.options[0].selected = true;
+                            }
                         }
                     });
             }

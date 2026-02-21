@@ -244,11 +244,17 @@ public class SupportResource {
         }
         User newUser = new User();
         newUser.type = User.TYPE_USER;
+        Country defaultCountry = Country.find("code", "US").firstResult();
+        newUser.country = defaultCountry;
+        newUser.timezone = defaultCountry != null
+                ? Timezone.find("country = ?1 and name = ?2", defaultCountry, "America/New_York").firstResult() : null;
         List<Country> countries = Country.list("order by name");
+        List<Timezone> timezones = defaultCountry != null ? Timezone.list("country = ?1 order by name", defaultCountry)
+                : List.of();
         return supportUserFormTemplate.data("user", newUser).data("companies", companies)
                 .data("selectedCompanyId", selectedCompany == null ? null : selectedCompany.id)
                 .data("types", List.of(User.TYPE_USER, User.TYPE_TAM)).data("action", "/support/users")
-                .data("title", "New user").data("countries", countries).data("timezones", List.of())
+                .data("title", "New user").data("countries", countries).data("timezones", timezones)
                 .data("assignedCount", counts.assignedCount).data("openCount", counts.openCount)
                 .data("ticketsBase", "/support").data("showSupportUsers", true).data("currentUser", currentUser);
     }
@@ -314,15 +320,26 @@ public class SupportResource {
         User user = requireSupport(auth);
         SupportTicketCounts counts = loadTicketCounts(user);
         Ticket ticket = new Ticket();
+        List<Company> companies = Company.listAll();
+        if (!companies.isEmpty()) {
+            ticket.company = companies.get(0);
+        }
+        List<CompanyEntitlement> entitlements = ticket.company == null ? java.util.List.of()
+                : uniqueEntitlements(CompanyEntitlement.find(
+                        "select distinct ce from CompanyEntitlement ce join fetch ce.entitlement join fetch ce.supportLevel where ce.company = ?1 order by ce.entitlement.name, ce.supportLevel.level, ce.supportLevel.id",
+                        ticket.company).list());
+        Long selectedCompanyEntitlementId = entitlements.isEmpty() ? null : entitlements.get(0).id;
+        String ticketName = ticket.company == null ? "" : Ticket.previewNextName(ticket.company);
         List<Category> categories = Category.listAll();
         Category defaultCategory = Category.findDefault();
-        return ticketFormTemplate.data("ticket", ticket).data("companies", Company.listAll())
-                .data("companyEntitlements", java.util.List.of()).data("selectedCompanyEntitlementId", null)
-                .data("categories", categories)
+        return ticketFormTemplate.data("ticket", ticket).data("companies", companies)
+                .data("companyEntitlements", entitlements)
+                .data("selectedCompanyEntitlementId", selectedCompanyEntitlementId).data("categories", categories)
                 .data("defaultCategoryId", defaultCategory == null ? null : defaultCategory.id)
-                .data("action", "/support/tickets").data("ticketName", "").data("entitlementsBase", "/support/tickets")
-                .data("assignedCount", counts.assignedCount).data("openCount", counts.openCount)
-                .data("ticketsBase", "/support").data("showSupportUsers", true).data("currentUser", user);
+                .data("action", "/support/tickets").data("ticketName", ticketName)
+                .data("entitlementsBase", "/support/tickets").data("assignedCount", counts.assignedCount)
+                .data("openCount", counts.openCount).data("ticketsBase", "/support").data("showSupportUsers", true)
+                .data("currentUser", user);
     }
 
     @GET
@@ -396,6 +413,7 @@ public class SupportResource {
                 .data("selectedCompanyEntitlementId",
                         ticket.companyEntitlement == null ? null : ticket.companyEntitlement.id)
                 .data("action", "/support/tickets/" + id).data("title", "Update").data("editableStatus", true)
+                .data("showLevel", true).data("ticketEntitlementExpired", isEntitlementExpired(ticket))
                 .data("supportUserBase", "/support/support-users").data("tamUserBase", "/support/tam-users")
                 .data("messageAction", "/support/tickets/" + id + "/messages")
                 .data("assignedCount", counts.assignedCount).data("openCount", counts.openCount)
@@ -601,22 +619,41 @@ public class SupportResource {
             throw new NotFoundException();
         }
         java.util.List<CompanyEntitlement> entitlements = CompanyEntitlement.find(
-                "select distinct ce from CompanyEntitlement ce join fetch ce.entitlement join fetch ce.supportLevel where ce.company = ?1",
+                "select distinct ce from CompanyEntitlement ce join fetch ce.entitlement join fetch ce.supportLevel where ce.company = ?1 order by ce.entitlement.name, ce.supportLevel.level, ce.supportLevel.id",
                 company).list();
+        entitlements = uniqueEntitlements(entitlements);
         Ticket ticket = new Ticket();
         ticket.company = company;
         ticket.name = "";
         String ticketName = Ticket.previewNextName(company);
         java.util.List<Category> categories = Category.listAll();
         Category defaultCategory = Category.findDefault();
+        Long selectedCompanyEntitlementId = entitlements.isEmpty() ? null : entitlements.get(0).id;
         return ticketFormTemplate.data("ticket", ticket).data("companies", Company.listAll())
-                .data("companyEntitlements", entitlements).data("selectedCompanyEntitlementId", null)
-                .data("action", "/support/tickets").data("ticketName", ticketName)
-                .data("assignedCount", counts.assignedCount).data("openCount", counts.openCount)
-                .data("ticketsBase", "/support").data("showSupportUsers", true)
+                .data("companyEntitlements", entitlements)
+                .data("selectedCompanyEntitlementId", selectedCompanyEntitlementId).data("action", "/support/tickets")
+                .data("ticketName", ticketName).data("assignedCount", counts.assignedCount)
+                .data("openCount", counts.openCount).data("ticketsBase", "/support").data("showSupportUsers", true)
                 .data("entitlementsBase", "/support/tickets").data("message", message).data("currentUser", user)
                 .data("categories", categories)
                 .data("defaultCategoryId", defaultCategory == null ? null : defaultCategory.id);
+    }
+
+    private List<CompanyEntitlement> uniqueEntitlements(List<CompanyEntitlement> entries) {
+        if (entries == null || entries.isEmpty()) {
+            return List.of();
+        }
+        java.util.List<CompanyEntitlement> unique = new java.util.ArrayList<>();
+        java.util.Set<Long> seenEntitlementIds = new java.util.LinkedHashSet<>();
+        for (CompanyEntitlement entry : entries) {
+            if (entry == null || entry.entitlement == null || entry.entitlement.id == null) {
+                continue;
+            }
+            if (seenEntitlementIds.add(entry.entitlement.id)) {
+                unique.add(entry);
+            }
+        }
+        return unique;
     }
 
     private String formatDate(LocalDateTime date) {
@@ -632,6 +669,22 @@ public class SupportResource {
             return level.color;
         }
         return "White";
+    }
+
+    private boolean isEntitlementExpired(Ticket ticket) {
+        if (ticket == null || ticket.companyEntitlement == null || ticket.companyEntitlement.date == null
+                || ticket.companyEntitlement.duration == null) {
+            return false;
+        }
+        java.time.LocalDate endDate = ticket.companyEntitlement.date;
+        if (ticket.companyEntitlement.duration == CompanyEntitlement.DURATION_MONTHLY) {
+            endDate = endDate.plusMonths(1);
+        } else if (ticket.companyEntitlement.duration == CompanyEntitlement.DURATION_YEARLY) {
+            endDate = endDate.plusYears(1);
+        } else {
+            return false;
+        }
+        return java.time.LocalDate.now().isAfter(endDate);
     }
 
     private void sortBySla(List<Ticket> tickets, Map<Long, String> slaColors, Map<Long, LocalDateTime> messageDates) {
@@ -707,6 +760,10 @@ public class SupportResource {
         Map<Long, String> slaColors = new LinkedHashMap<>();
         LocalDateTime now = LocalDateTime.now();
         for (Ticket ticket : tickets) {
+            if (isEntitlementExpired(ticket)) {
+                slaColors.put(ticket.id, "Black");
+                continue;
+            }
             LocalDateTime messageDate = messageDates.get(ticket.id);
             if (messageDate == null || ticket.companyEntitlement == null
                     || ticket.companyEntitlement.supportLevel == null) {
@@ -761,7 +818,9 @@ public class SupportResource {
         }
         for (Ticket ticket : closedTickets) {
             if (ticket != null && ticket.id != null) {
-                slaColors.put(ticket.id, "White");
+                if (!isEntitlementExpired(ticket)) {
+                    slaColors.put(ticket.id, "White");
+                }
             }
         }
         sortBySla(assignedTickets, slaColors, messageDates);

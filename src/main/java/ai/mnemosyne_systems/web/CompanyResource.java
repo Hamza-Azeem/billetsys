@@ -37,6 +37,7 @@ import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.net.URI;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -67,14 +68,21 @@ public class CompanyResource {
         User user = requireAdmin(auth);
         Company company = new Company();
         User primaryContact = new User();
+        Country defaultCountry = Country.find("code", "US").firstResult();
+        Timezone defaultTimezone = defaultCountry != null
+                ? Timezone.find("country = ?1 and name = ?2", defaultCountry, "America/New_York").firstResult() : null;
+        company.country = defaultCountry;
+        company.timezone = defaultTimezone;
         List<Country> countries = Country.list("order by name");
+        List<Timezone> timezones = defaultCountry != null ? Timezone.list("country = ?1 order by name", defaultCountry)
+                : java.util.List.of();
         return companyFormTemplate.data("company", company).data("users", User.list("type", User.TYPE_USER))
                 .data("tams", User.list("type", User.TYPE_TAM)).data("entitlements", Entitlement.listAll())
                 .data("supportLevels", Level.listAll()).data("companyEntitlements", java.util.List.of())
                 .data("selectedEntitlementLevels", java.util.Map.of()).data("selectedUserIds", java.util.List.of())
-                .data("selectedTamIds", java.util.List.of()).data("countries", countries)
-                .data("timezones", java.util.List.of()).data("action", "/companies").data("title", "New company")
-                .data("currentUser", user).data("primaryContact", primaryContact);
+                .data("selectedTamIds", java.util.List.of()).data("countries", countries).data("timezones", timezones)
+                .data("action", "/companies").data("title", "New company").data("currentUser", user)
+                .data("primaryContact", primaryContact);
     }
 
     @GET
@@ -107,8 +115,9 @@ public class CompanyResource {
             }
         }
         java.util.List<Country> countries = Country.list("order by name");
-        java.util.List<Timezone> timezones = company.country != null
-                ? Timezone.list("country = ?1 order by name", company.country) : java.util.List.of();
+        Country timezoneCountry = company.country != null ? company.country : Country.find("code", "US").firstResult();
+        java.util.List<Timezone> timezones = timezoneCountry != null
+                ? Timezone.list("country = ?1 order by name", timezoneCountry) : java.util.List.of();
         return companyFormTemplate.data("company", company).data("users", User.list("type", User.TYPE_USER))
                 .data("tams", User.list("type", User.TYPE_TAM)).data("entitlements", Entitlement.listAll())
                 .data("supportLevels", Level.listAll()).data("companyEntitlements", companyEntitlements)
@@ -138,10 +147,16 @@ public class CompanyResource {
         java.util.List<CompanyEntitlement> companyEntitlements = CompanyEntitlement.find(
                 "select distinct ce from CompanyEntitlement ce join fetch ce.entitlement join fetch ce.supportLevel where ce.company = ?1",
                 company).list();
+        java.util.Set<Long> expiredEntitlementIds = new java.util.LinkedHashSet<>();
+        for (CompanyEntitlement entry : companyEntitlements) {
+            if (entry != null && entry.id != null && isEntitlementExpired(entry)) {
+                expiredEntitlementIds.add(entry.id);
+            }
+        }
         return companyViewTemplate.data("company", company).data("companyUsers", users).data("companyTams", tamUsers)
-                .data("companyEntitlements", companyEntitlements).data("currentUser", user)
-                .data("action", "/companies/" + id).data("title", "Edit Company").data("currentUser", user)
-                .data("primaryContact", company.primaryContact);
+                .data("companyEntitlements", companyEntitlements).data("expiredEntitlementIds", expiredEntitlementIds)
+                .data("currentUser", user).data("action", "/companies/" + id).data("title", "Edit Company")
+                .data("currentUser", user).data("primaryContact", company.primaryContact);
     }
 
     @POST
@@ -153,7 +168,10 @@ public class CompanyResource {
             @FormParam("countryId") Long countryId, @FormParam("timezoneId") Long timezoneId,
             @FormParam("userIds") java.util.List<Long> userIds, @FormParam("tamIds") java.util.List<Long> tamIds,
             @FormParam("entitlementIds") java.util.List<Long> entitlementIds,
-            @FormParam("levelIds") java.util.List<Long> levelIds, @FormParam("phoneNumber") String phoneNumber,
+            @FormParam("levelIds") java.util.List<Long> levelIds,
+            @FormParam("entitlementDates") java.util.List<String> entitlementDates,
+            @FormParam("entitlementDurations") java.util.List<Integer> entitlementDurations,
+            @FormParam("phoneNumber") String phoneNumber,
             @FormParam("primaryContactUsername") String primaryContactUsername,
             @FormParam("primaryContactPhoneNumber") String primaryContactPhoneNumber,
             @FormParam("primaryPhoneNumberExtension") String primaryPhoneNumberExtension,
@@ -187,7 +205,8 @@ public class CompanyResource {
         company.phoneNumber = phoneNumber;
         company.primaryContact = primaryContact;
         company.persist();
-        applyEntitlements(company, entitlementIds, levelIds, java.util.List.of());
+        applyEntitlements(company, entitlementIds, levelIds, entitlementDates, entitlementDurations,
+                java.util.List.of());
         return Response.seeOther(URI.create("/companies")).build();
     }
 
@@ -201,8 +220,10 @@ public class CompanyResource {
             @FormParam("timezoneId") Long timezoneId, @FormParam("userIds") java.util.List<Long> userIds,
             @FormParam("tamIds") java.util.List<Long> tamIds,
             @FormParam("entitlementIds") java.util.List<Long> entitlementIds,
-            @FormParam("levelIds") java.util.List<Long> levelIds, @FormParam("phoneNumber") String phoneNumber,
-            @FormParam("primaryContact") Long primaryContactId) {
+            @FormParam("levelIds") java.util.List<Long> levelIds,
+            @FormParam("entitlementDates") java.util.List<String> entitlementDates,
+            @FormParam("entitlementDurations") java.util.List<Integer> entitlementDurations,
+            @FormParam("phoneNumber") String phoneNumber, @FormParam("primaryContact") Long primaryContactId) {
         requireAdmin(auth);
         Company company = Company.findById(id);
         if (company == null) {
@@ -242,7 +263,7 @@ public class CompanyResource {
         java.util.List<CompanyEntitlement> existingEntitlements = CompanyEntitlement.find("company = ?1", company)
                 .list();
         java.util.Set<String> selectedEntitlementPairs = applyEntitlements(company, entitlementIds, levelIds,
-                existingEntitlements);
+                entitlementDates, entitlementDurations, existingEntitlements);
         for (CompanyEntitlement entry : existingEntitlements) {
             if (entry.entitlement == null || entry.supportLevel == null) {
                 continue;
@@ -279,8 +300,15 @@ public class CompanyResource {
         java.util.List<CompanyEntitlement> companyEntitlements = CompanyEntitlement.find(
                 "select distinct ce from CompanyEntitlement ce join fetch ce.entitlement join fetch ce.supportLevel where ce.company = ?1",
                 company).list();
+        java.util.Set<Long> expiredEntitlementIds = new java.util.LinkedHashSet<>();
+        for (CompanyEntitlement entry : companyEntitlements) {
+            if (entry != null && entry.id != null && isEntitlementExpired(entry)) {
+                expiredEntitlementIds.add(entry.id);
+            }
+        }
         return companyViewTemplate.data("company", company).data("companyUsers", users).data("companyTams", tamUsers)
-                .data("companyEntitlements", companyEntitlements).data("currentUser", user);
+                .data("companyEntitlements", companyEntitlements).data("expiredEntitlementIds", expiredEntitlementIds)
+                .data("currentUser", user);
     }
 
     @POST
@@ -319,7 +347,8 @@ public class CompanyResource {
     }
 
     private java.util.Set<String> applyEntitlements(Company company, java.util.List<Long> entitlementIds,
-            java.util.List<Long> levelIds, java.util.List<CompanyEntitlement> existingEntitlements) {
+            java.util.List<Long> levelIds, java.util.List<String> entitlementDates,
+            java.util.List<Integer> entitlementDurations, java.util.List<CompanyEntitlement> existingEntitlements) {
         java.util.Set<String> selectedEntitlementPairs = new java.util.HashSet<>();
         if (entitlementIds == null || levelIds == null) {
             return selectedEntitlementPairs;
@@ -342,18 +371,82 @@ public class CompanyResource {
             if (entitlement == null || supportLevel == null) {
                 continue;
             }
-            String pairKey = entitlement.id + ":" + supportLevel.id;
-            selectedEntitlementPairs.add(pairKey);
-            CompanyEntitlement entry = byEntitlementPair.get(pairKey);
-            if (entry == null) {
-                entry = new CompanyEntitlement();
-                entry.company = company;
+            LocalDate entitlementDate = parseEntitlementDate(entitlementDates, index);
+            Integer entitlementDuration = parseEntitlementDuration(entitlementDurations, index);
+            for (Level levelToApply : levelsToApply(supportLevel)) {
+                String pairKey = entitlement.id + ":" + levelToApply.id;
+                if (selectedEntitlementPairs.contains(pairKey)) {
+                    continue;
+                }
+                selectedEntitlementPairs.add(pairKey);
+                CompanyEntitlement entry = byEntitlementPair.get(pairKey);
+                if (entry == null) {
+                    entry = new CompanyEntitlement();
+                    entry.company = company;
+                    byEntitlementPair.put(pairKey, entry);
+                }
+                entry.entitlement = entitlement;
+                entry.supportLevel = levelToApply;
+                entry.date = entitlementDate;
+                entry.duration = entitlementDuration;
+                entry.persist();
             }
-            entry.entitlement = entitlement;
-            entry.supportLevel = supportLevel;
-            entry.persist();
         }
         return selectedEntitlementPairs;
+    }
+
+    private java.util.List<Level> levelsToApply(Level selectedLevel) {
+        if (selectedLevel == null || selectedLevel.id == null) {
+            return java.util.List.of();
+        }
+        java.util.List<Level> levels = new java.util.ArrayList<>();
+        levels.add(selectedLevel);
+        if (selectedLevel.level != null) {
+            levels.addAll(Level.list("level > ?1 order by level", selectedLevel.level));
+        }
+        return levels;
+    }
+
+    private LocalDate parseEntitlementDate(java.util.List<String> entitlementDates, int index) {
+        if (entitlementDates == null || index >= entitlementDates.size()) {
+            return LocalDate.now();
+        }
+        String value = entitlementDates.get(index);
+        if (value == null || value.isBlank()) {
+            return LocalDate.now();
+        }
+        try {
+            return LocalDate.parse(value.trim());
+        } catch (RuntimeException ex) {
+            throw new BadRequestException("Date is invalid");
+        }
+    }
+
+    private Integer parseEntitlementDuration(java.util.List<Integer> entitlementDurations, int index) {
+        Integer value = CompanyEntitlement.DURATION_YEARLY;
+        if (entitlementDurations != null && index < entitlementDurations.size()) {
+            value = entitlementDurations.get(index);
+        }
+        if (value == null
+                || (value != CompanyEntitlement.DURATION_MONTHLY && value != CompanyEntitlement.DURATION_YEARLY)) {
+            throw new BadRequestException("Duration is invalid");
+        }
+        return value;
+    }
+
+    private boolean isEntitlementExpired(CompanyEntitlement entitlement) {
+        if (entitlement == null || entitlement.date == null || entitlement.duration == null) {
+            return false;
+        }
+        LocalDate endDate = entitlement.date;
+        if (entitlement.duration == CompanyEntitlement.DURATION_MONTHLY) {
+            endDate = endDate.plusMonths(1);
+        } else if (entitlement.duration == CompanyEntitlement.DURATION_YEARLY) {
+            endDate = endDate.plusYears(1);
+        } else {
+            return false;
+        }
+        return LocalDate.now().isAfter(endDate);
     }
 
     private void validatePrimaryContactUser(String username, String email, String password) {

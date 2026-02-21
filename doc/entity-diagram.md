@@ -109,6 +109,8 @@ erDiagram
         BIGINT company_id FK
         BIGINT entitlement_id FK
         BIGINT support_level_id FK
+        DATE date
+        INT duration
     }
 
     ENTITLEMENT_LEVEL {

@@ -175,12 +175,18 @@ public class UserResource {
         }
         User newUser = new User();
         newUser.type = User.TYPE_USER;
+        Country defaultCountry = Country.find("code", "US").firstResult();
+        newUser.country = defaultCountry;
+        newUser.timezone = defaultCountry != null
+                ? Timezone.find("country = ?1 and name = ?2", defaultCountry, "America/New_York").firstResult() : null;
         List<Country> countries = Country.list("order by name");
+        List<Timezone> timezones = defaultCountry != null ? Timezone.list("country = ?1 order by name", defaultCountry)
+                : List.of();
         return supportUserFormTemplate.data("user", newUser).data("companies", companies)
                 .data("selectedCompanyId", selectedCompany == null ? null : selectedCompany.id)
                 .data("companyLocked", selectedCompany != null && companies.size() <= 1)
                 .data("types", List.of(User.TYPE_USER)).data("action", "/tam/users").data("title", "New user")
-                .data("countries", countries).data("timezones", List.of())
+                .data("countries", countries).data("timezones", timezones)
                 .data("assignedCount", data.assignedTickets.size()).data("openCount", data.openTickets.size())
                 .data("ticketsBase", "/user/tickets").data("showSupportUsers", true).data("currentUser", user);
     }
@@ -259,12 +265,28 @@ public class UserResource {
                 .find("select distinct ce from CompanyEntitlement ce join fetch ce.entitlement join fetch ce.supportLevel where ce.company = ?1",
                         company)
                 .list();
+        java.util.List<CompanyEntitlement> uniqueEntitlements = new java.util.ArrayList<>();
+        java.util.Set<Long> entitlementIds = new java.util.LinkedHashSet<>();
+        for (CompanyEntitlement entitlement : entitlements) {
+            if (entitlement == null || entitlement.entitlement == null || entitlement.entitlement.id == null) {
+                continue;
+            }
+            if (entitlementIds.add(entitlement.entitlement.id)) {
+                uniqueEntitlements.add(entitlement);
+            }
+        }
+        java.util.Set<Long> expiredEntitlementIds = new java.util.LinkedHashSet<>();
+        for (CompanyEntitlement entitlement : uniqueEntitlements) {
+            if (isEntitlementExpired(entitlement) && entitlement.id != null) {
+                expiredEntitlementIds.add(entitlement.id);
+            }
+        }
         java.util.List<Category> categories = Category.listAll();
         Category defaultCategory = Category.findDefault();
-        return ticketCreateTemplate.data("companyEntitlements", entitlements)
+        return ticketCreateTemplate.data("companyEntitlements", uniqueEntitlements)
                 .data("ticketName", company == null ? "" : Ticket.previewNextName(company))
-                .data("assignedCount", data.assignedTickets.size()).data("openCount", data.openTickets.size())
-                .data("ticketsBase", "/user/tickets")
+                .data("expiredEntitlementIds", expiredEntitlementIds).data("assignedCount", data.assignedTickets.size())
+                .data("openCount", data.openTickets.size()).data("ticketsBase", "/user/tickets")
                 .data("showSupportUsers", User.TYPE_TAM.equalsIgnoreCase(user.type))
                 .data("usersBase", User.TYPE_TAM.equalsIgnoreCase(user.type) ? "/tam/users" : "/user/users")
                 .data("currentUser", user).data("categories", categories)
@@ -301,6 +323,9 @@ public class UserResource {
                 entitlement.company, user) > 0;
         if (!allowed) {
             throw new BadRequestException("Entitlement is required");
+        }
+        if (isEntitlementExpired(entitlement)) {
+            throw new BadRequestException("Entitlement is expired");
         }
         Ticket ticket = new Ticket();
         ticket.name = Ticket.nextName(entitlement.company);
@@ -464,13 +489,17 @@ public class UserResource {
                 }
             }
         }
+        boolean showLevel = User.TYPE_TAM.equalsIgnoreCase(user.type);
+        String levelName = showLevel ? resolveLowestEntitlementLevelName(ticket) : null;
         java.util.List<Category> categories = Category.listAll();
         return tamTicketDetailTemplate.data("ticket", ticket).data("displayStatus", displayStatus)
                 .data("supportUsers", supportUsers).data("tamUsers", tamUsers).data("messages", messages)
                 .data("messageLabels", messageLabels).data("messageAuthorNames", messageAuthorNames)
                 .data("messageAuthorLinks", messageAuthorLinks).data("action", "/user/tickets/" + id)
                 .data("editableStatus", false).data("supportUserBase", "/user/support-users")
-                .data("tamUserBase", "/user/tam-users").data("messageAction", "/user/tickets/" + id + "/messages")
+                .data("ticketEntitlementExpired", isEntitlementExpired(ticket)).data("tamUserBase", "/user/tam-users")
+                .data("showLevel", showLevel).data("levelName", levelName)
+                .data("messageAction", "/user/tickets/" + id + "/messages")
                 .data("assignedCount", data.assignedTickets.size()).data("openCount", data.openTickets.size())
                 .data("ticketsBase", "/user/tickets")
                 .data("showSupportUsers", User.TYPE_TAM.equalsIgnoreCase(user.type))
@@ -575,10 +604,16 @@ public class UserResource {
         newUser.type = User.TYPE_USER;
         newUser.name = "";
         newUser.email = "";
+        Country defaultCountry = Country.find("code", "US").firstResult();
+        newUser.country = defaultCountry;
+        newUser.timezone = defaultCountry != null
+                ? Timezone.find("country = ?1 and name = ?2", defaultCountry, "America/New_York").firstResult() : null;
         List<Country> countries = Country.list("order by name");
+        List<Timezone> timezones = defaultCountry != null ? Timezone.list("country = ?1 order by name", defaultCountry)
+                : List.of();
         List<Company> allCompanies = Company.list("order by name");
         return adminUserFormTemplate.data("user", newUser).data("action", "/users").data("title", "New user")
-                .data("countries", countries).data("timezones", List.of()).data("allCompanies", allCompanies)
+                .data("countries", countries).data("timezones", timezones).data("allCompanies", allCompanies)
                 .data("userCompany", null).data("currentUser", user);
     }
 
@@ -592,8 +627,10 @@ public class UserResource {
             throw new NotFoundException();
         }
         List<Country> countries = Country.list("order by name");
-        List<Timezone> timezones = editUser.country != null
-                ? Timezone.list("country = ?1 order by name", editUser.country) : List.of();
+        Country timezoneCountry = editUser.country != null ? editUser.country
+                : Country.find("code", "US").firstResult();
+        List<Timezone> timezones = timezoneCountry != null
+                ? Timezone.list("country = ?1 order by name", timezoneCountry) : List.of();
         List<Company> allCompanies = Company.list("order by name");
         Company userCompany = Company.find("select c from Company c join c.users u where u = ?1", editUser)
                 .firstResult();
@@ -780,6 +817,10 @@ public class UserResource {
         java.util.Map<Long, String> slaColors = new java.util.LinkedHashMap<>();
         java.time.LocalDateTime now = java.time.LocalDateTime.now();
         for (Ticket ticket : scopedTickets) {
+            if (isEntitlementExpired(ticket)) {
+                slaColors.put(ticket.id, "Black");
+                continue;
+            }
             java.time.LocalDateTime messageDate = messageDates.get(ticket.id);
             if (messageDate == null || ticket.companyEntitlement == null
                     || ticket.companyEntitlement.supportLevel == null) {
@@ -823,7 +864,9 @@ public class UserResource {
         }
         for (Ticket ticket : closedTickets) {
             if (ticket != null && ticket.id != null) {
-                slaColors.put(ticket.id, "White");
+                if (!isEntitlementExpired(ticket)) {
+                    slaColors.put(ticket.id, "White");
+                }
             }
         }
         sortBySla(assignedTickets, slaColors, messageDates);
@@ -850,6 +893,48 @@ public class UserResource {
             return level.color;
         }
         return "White";
+    }
+
+    private boolean isEntitlementExpired(Ticket ticket) {
+        if (ticket == null || ticket.companyEntitlement == null || ticket.companyEntitlement.date == null
+                || ticket.companyEntitlement.duration == null) {
+            return false;
+        }
+        java.time.LocalDate endDate = ticket.companyEntitlement.date;
+        if (ticket.companyEntitlement.duration == CompanyEntitlement.DURATION_MONTHLY) {
+            endDate = endDate.plusMonths(1);
+        } else if (ticket.companyEntitlement.duration == CompanyEntitlement.DURATION_YEARLY) {
+            endDate = endDate.plusYears(1);
+        } else {
+            return false;
+        }
+        return java.time.LocalDate.now().isAfter(endDate);
+    }
+
+    private boolean isEntitlementExpired(CompanyEntitlement entitlement) {
+        if (entitlement == null || entitlement.date == null || entitlement.duration == null) {
+            return false;
+        }
+        java.time.LocalDate endDate = entitlement.date;
+        if (entitlement.duration == CompanyEntitlement.DURATION_MONTHLY) {
+            endDate = endDate.plusMonths(1);
+        } else if (entitlement.duration == CompanyEntitlement.DURATION_YEARLY) {
+            endDate = endDate.plusYears(1);
+        } else {
+            return false;
+        }
+        return java.time.LocalDate.now().isAfter(endDate);
+    }
+
+    private String resolveLowestEntitlementLevelName(Ticket ticket) {
+        if (ticket == null || ticket.companyEntitlement == null || ticket.companyEntitlement.entitlement == null) {
+            return null;
+        }
+        ai.mnemosyne_systems.model.Level level = ai.mnemosyne_systems.model.Level
+                .find("select l from Entitlement e join e.supportLevels l where e = ?1 order by l.level asc, l.id asc",
+                        ticket.companyEntitlement.entitlement)
+                .firstResult();
+        return level == null ? null : level.name;
     }
 
     private void sortBySla(List<Ticket> tickets, Map<Long, String> slaColors,

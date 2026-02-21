@@ -25,7 +25,8 @@
                 {#if ticket.companyEntitlement == null || ticket.companyEntitlement.entitlement == null}
                 <input type="text" value="-" readonly>
                 {#else}
-                <input type="text" value="{ticket.companyEntitlement.entitlement.name}" readonly>
+                <input type="text" value="{ticket.companyEntitlement.entitlement.name}" readonly
+                       style="{#if ticketEntitlementExpired?? && ticketEntitlementExpired}background-color:#000;color:#fff;{/if}">
                 {/if}
             </label>
             <label>Support users
@@ -38,16 +39,6 @@
                     {/for}
                 </div>
                 {/if}
-            </label>
-            <label>Level
-                {#if ticket.companyEntitlement == null || ticket.companyEntitlement.supportLevel == null}
-                <input type="text" value="-" readonly>
-                {#else}
-                <input type="text" value="{ticket.companyEntitlement.supportLevel.name}" readonly>
-                {/if}
-            </label>
-            <label class="ticket-detail-spacer" aria-hidden="true">
-                <input type="text" value="-" readonly>
             </label>
             <label>TAMs
                 {#if tamUsers.isEmpty}

@@ -192,10 +192,10 @@ class UserAccessTest {
         RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/user/tickets/" + ticketId).then()
                 .statusCode(200).body(Matchers.containsString(userTicketName)).body(Matchers.containsString("Ticket"))
                 .body(Matchers.containsString("Support users")).body(Matchers.containsString("Company"))
-                .body(Matchers.containsString("Entitlement")).body(Matchers.containsString("Level"))
-                .body(Matchers.containsString("value=\"Assigned\"")).body(Matchers.containsString("TAMs"))
-                .body(Matchers.containsString("Category")).body(Matchers.containsString("External issue"))
-                .body(Matchers.containsString("Reply")).body(Matchers.not(Matchers.containsString("Back")));
+                .body(Matchers.containsString("Entitlement")).body(Matchers.containsString("value=\"Assigned\""))
+                .body(Matchers.containsString("TAMs")).body(Matchers.containsString("Category"))
+                .body(Matchers.containsString("External issue")).body(Matchers.containsString("Reply"))
+                .body(Matchers.not(Matchers.containsString("Back")));
         RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/tickets/" + ticketId).then().statusCode(200)
                 .body(Matchers.containsString("/user/support-users/" + supportUser.id))
                 .body(Matchers.containsString("/user/tam-users/" + tamUser.id));
@@ -235,10 +235,11 @@ class UserAccessTest {
         RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/user/tickets/" + ticketId).then()
                 .statusCode(200).body(Matchers.containsString(tamTicketName)).body(Matchers.containsString("Ticket"))
                 .body(Matchers.containsString("Support users")).body(Matchers.containsString("Company"))
-                .body(Matchers.containsString("Entitlement")).body(Matchers.containsString("Level"))
-                .body(Matchers.containsString("/user/support-users/")).body(Matchers.containsString("support1"))
-                .body(Matchers.containsString("/user/tam-users/")).body(Matchers.containsString("tam"))
-                .body(Matchers.containsString("Reply")).body(Matchers.not(Matchers.containsString("Back")));
+                .body(Matchers.containsString("Entitlement")).body(Matchers.containsString("/user/support-users/"))
+                .body(Matchers.containsString("Level")).body(Matchers.containsString("Critical"))
+                .body(Matchers.containsString("support1")).body(Matchers.containsString("/user/tam-users/"))
+                .body(Matchers.containsString("tam")).body(Matchers.containsString("Reply"))
+                .body(Matchers.not(Matchers.containsString("Back")));
 
         RestAssured.given().cookie(AuthHelper.AUTH_COOKIE, cookie).get("/tickets/" + ticketId).then().statusCode(200)
                 .body(Matchers.containsString(tamTicketName)).body(Matchers.containsString("Support users"))
@@ -260,14 +261,15 @@ class UserAccessTest {
         String entitlementName = "Test Entitlement";
         RestAssured.given().redirects().follow(false).cookie(AuthHelper.AUTH_COOKIE, cookie)
                 .contentType(ContentType.URLENC).formParam("name", entitlementName)
-                .formParam("description", "Test description").post("/entitlements").then().statusCode(303);
+                .formParam("description", "Test description").formParam("date", "2026-01-01").formParam("duration", 2)
+                .post("/entitlements").then().statusCode(303);
         Entitlement entitlement = Entitlement.find("name", entitlementName).firstResult();
         Assertions.assertNotNull(entitlement);
 
         RestAssured.given().redirects().follow(false).cookie(AuthHelper.AUTH_COOKIE, cookie)
                 .contentType(ContentType.URLENC).formParam("name", "Updated Entitlement")
-                .formParam("description", "Updated description").post("/entitlements/" + entitlement.id).then()
-                .statusCode(303);
+                .formParam("description", "Updated description").formParam("date", "2026-02-01")
+                .formParam("duration", 1).post("/entitlements/" + entitlement.id).then().statusCode(303);
         Entitlement updatedEntitlement = refreshedEntitlement(entitlement.id);
         Assertions.assertEquals("Updated Entitlement", updatedEntitlement.name);
 

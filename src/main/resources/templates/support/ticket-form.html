@@ -74,7 +74,6 @@
         <div>
             <label>Company
                 <select name="companyId" required onchange="window.location = '{entitlementsBase}/company/' + this.value + '/entitlements?message=' + encodeURIComponent(this.form.message.value)">
-                    <option value="">Select a company</option>
                     {#for company in companies}
                     <option value="{company.id}" {#if ticket.company != null && ticket.company.id == company.id}selected{/if}>{company.name}</option>
                     {/for}
@@ -85,7 +84,7 @@
         {#for entry in companyEntitlements}
         <div>
             <label>Entitlement
-                <input type="text" value="{entry.entitlement.name} - {entry.supportLevel.name}" readonly>
+                <input type="text" value="{entry.entitlement.name}" readonly>
             </label>
             <input type="hidden" name="companyEntitlementId" value="{entry.id}">
         </div>
@@ -94,9 +93,8 @@
         <div>
             <label>Entitlement
                 <select name="companyEntitlementId" required>
-                    <option value="">Select entitlement</option>
                     {#for entry in companyEntitlements}
-                    <option value="{entry.id}" {#if selectedCompanyEntitlementId == entry.id}selected{/if}>{entry.entitlement.name} - {entry.supportLevel.name}</option>
+                    <option value="{entry.id}" {#if selectedCompanyEntitlementId == entry.id}selected{/if}>{entry.entitlement.name}</option>
                     {/for}
                 </select>
             </label>

@@ -75,27 +75,58 @@
         {#for entry in companyEntitlements}
         <div>
             <label>Entitlement
-                <input type="text" value="{entry.entitlement.name} - {entry.supportLevel.name}" readonly>
+                <input type="text" value="{entry.entitlement.name}" readonly>
             </label>
-            <input type="hidden" name="companyEntitlementId" value="{entry.id}">
+            <input type="hidden" name="companyEntitlementId" value="{entry.id}" data-expired="{#if expiredEntitlementIds.contains(entry.id)}true{#else}false{/if}">
         </div>
         {/for}
         {#else}
         <div>
             <label>Entitlement
-                <select name="companyEntitlementId" required>
-                    <option value="">Select entitlement</option>
+                <select id="companyEntitlementId" name="companyEntitlementId" required>
                     {#for entry in companyEntitlements}
-                    <option value="{entry.id}">{entry.entitlement.name} - {entry.supportLevel.name}</option>
+                    <option value="{entry.id}" data-expired="{#if expiredEntitlementIds.contains(entry.id)}true{#else}false{/if}">{entry.entitlement.name}</option>
                     {/for}
                 </select>
             </label>
         </div>
         {/if}
         <div class="form-actions">
-            <button type="submit" class="action-button">Create</button>
+            <button id="create-ticket-button" type="submit" class="action-button">Create</button>
         </div>
     </form>
 </div>
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        const select = document.getElementById("companyEntitlementId");
+        const button = document.getElementById("create-ticket-button");
+        if (!button) {
+            return;
+        }
+        const applyDisabledStyle = () => {
+            if (button.disabled) {
+                button.style.backgroundColor = "#9e9e9e";
+                button.style.cursor = "not-allowed";
+            } else {
+                button.style.backgroundColor = "";
+                button.style.cursor = "";
+            }
+        };
+        if (!select) {
+            const hidden = document.querySelector('input[name="companyEntitlementId"]');
+            button.disabled = hidden != null && hidden.getAttribute("data-expired") === "true";
+            applyDisabledStyle();
+            return;
+        }
+        const updateCreateState = () => {
+            const selected = select.options[select.selectedIndex];
+            const expired = selected && selected.getAttribute("data-expired") === "true";
+            button.disabled = !!expired;
+            applyDisabledStyle();
+        };
+        select.addEventListener("change", updateCreateState);
+        updateCreateState();
+    });
+</script>
 {/content}
 {/include}

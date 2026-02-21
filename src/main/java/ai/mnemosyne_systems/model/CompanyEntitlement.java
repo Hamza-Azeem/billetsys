@@ -17,10 +17,13 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
+import java.time.LocalDate;
 
 @Entity
 @Table(name = "company_entitlements")
 public class CompanyEntitlement extends PanacheEntityBase {
+    public static final int DURATION_MONTHLY = 1;
+    public static final int DURATION_YEARLY = 2;
 
     @Id
     @SequenceGenerator(name = "company_entitlement_seq", sequenceName = "company_entitlement_seq", allocationSize = 1)
@@ -38,4 +41,8 @@ public class CompanyEntitlement extends PanacheEntityBase {
     @ManyToOne(optional = false)
     @JoinColumn(name = "support_level_id", nullable = false)
     public Level supportLevel;
+
+    public LocalDate date;
+
+    public Integer duration;
 }

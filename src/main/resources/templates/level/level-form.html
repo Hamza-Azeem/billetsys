@@ -99,17 +99,15 @@
         </div>
         <label>Country
             <select name="countryId">
-                <option value="">Select country</option>
                 {#for country in countries}
-                <option value="{country.id}" {#if level.country != null && level.country.id == country.id}selected{/if}>{country.name}</option>
+                <option value="{country.id}" {#if (level.country != null && level.country.id == country.id) || (level.country == null && country.code == 'US')}selected{/if}>{country.name}</option>
                 {/for}
             </select>
         </label>
         <label>Timezone
             <select name="timezoneId">
-                <option value="">Select timezone</option>
                 {#for timezone in timezones}
-                <option value="{timezone.id}" {#if level.timezone != null && level.timezone.id == timezone.id}selected{/if}>{timezone.name}</option>
+                <option value="{timezone.id}" {#if (level.timezone != null && level.timezone.id == timezone.id) || (level.timezone == null && timezone.name == 'America/New_York')}selected{/if}>{timezone.name}</option>
                 {/for}
             </select>
         </label>
