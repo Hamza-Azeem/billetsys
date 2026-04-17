@@ -16,7 +16,9 @@ import ai.mnemosyne_systems.model.Message;
 import ai.mnemosyne_systems.model.Ticket;
 import ai.mnemosyne_systems.model.User;
 import ai.mnemosyne_systems.model.Version;
+import ai.mnemosyne_systems.model.event.Event;
 import ai.mnemosyne_systems.service.CrossReferenceService;
+import ai.mnemosyne_systems.service.EventService;
 import ai.mnemosyne_systems.util.AuthHelper;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -46,6 +48,9 @@ public class SuperuserTicketApiResource {
 
     @Inject
     SuperuserResource superuserResource;
+
+    @Inject
+    EventService eventService;
 
     @GET
     @Transactional
@@ -174,6 +179,9 @@ public class SuperuserTicketApiResource {
 
         java.util.Map<Long, Ticket> ticketCache = crossReferenceService
                 .preloadReferencedTickets(messages.stream().map(m -> m.body).toList());
+        List<Event> rawEvents = eventService.getAllChangesToEntity(ticket.id);
+        List<SupportTicketApiResource.EventEntry> eventEntries = rawEvents.stream().map(this::toEventEntry).toList();
+
         return new UserTicketApiResource.RoleTicketDetailResponse(ticket.id, ticket.name, ticket.displayTitle(),
                 normalizeDisplayStatus(ticket.status), data.assignedTickets == null ? 0 : data.assignedTickets.size(),
                 data.openTickets == null ? 0 : data.openTickets.size(),
@@ -198,7 +206,7 @@ public class SuperuserTicketApiResource {
                 "/superuser/tickets/" + ticket.id + "/messages", "/tickets/export/" + ticket.id,
                 List.of("Open", "Assigned", "In Progress", "Resolved", "Closed"), false, false, false, true, true,
                 externalUsers.stream().map(this::toUserReference).toList(),
-                userUsers.stream().map(this::toUserReference).toList());
+                userUsers.stream().map(this::toUserReference).toList(), eventEntries);
     }
 
     @GET
@@ -340,5 +348,12 @@ public class SuperuserTicketApiResource {
             throw new NotAuthorizedException(Response.status(Response.Status.UNAUTHORIZED).build());
         }
         return user;
+    }
+
+    private SupportTicketApiResource.EventEntry toEventEntry(Event event) {
+        User user = event.userId == null ? null : User.findById(event.userId);
+        return new SupportTicketApiResource.EventEntry(event.id, event.eventType == null ? null : event.eventValue,
+                event.createdAt == null ? null : SupportTicketViewSupport.formatDate(event.createdAt),
+                user == null ? null : toUserReference(user));
     }
 }

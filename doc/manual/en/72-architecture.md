@@ -169,6 +169,16 @@ erDiagram
         BIGINT entitlement_id PK, FK
         BIGINT support_level_id PK, FK
     }
+    
+    EVENTS {
+        BIGINT id PK
+        BIGINT event_type
+        TIMESTAMP created_at
+        BIGINT entity_id
+        BIGINT company_id
+        BIGINT user_id
+        STRING event_value
+    }
 
     COUNTRY ||--o{ TIMEZONE : has
     COUNTRY ||--o{ COMPANY : locates

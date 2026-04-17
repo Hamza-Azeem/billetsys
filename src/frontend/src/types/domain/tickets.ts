@@ -96,10 +96,18 @@ export interface TicketWorkbenchBootstrap {
   [key: string]: unknown;
 }
 
+export interface EventEntry {
+  id: number;
+  action: string;
+  dateLabel?: string;
+  user?: UserReference;
+}
+
 export interface SupportTicketDetailRecord extends TicketReference {
   categories?: NamedEntity[];
   versions?: VersionInfo[];
   messages?: MessageReference[];
+  events?: EventEntry[];
 }
 
 export interface CrossReferenceEntry {
